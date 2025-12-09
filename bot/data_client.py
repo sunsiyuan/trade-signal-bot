@@ -1,5 +1,6 @@
 import ccxt
 import pandas as pd
+import math
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional
 
@@ -94,6 +95,69 @@ class HyperliquidDataClient:
 
         return next((c for c in candidates if c is not None), None)
 
+    def _extract_open_interest(self, entry: Dict) -> Optional[float]:
+        if not isinstance(entry, dict):
+            return None
+
+        info = entry.get("info", {}) if isinstance(entry.get("info"), dict) else {}
+
+        candidates = [
+            entry.get("openInterest"),
+            entry.get("openInterestAmount"),
+            entry.get("openInterestValue"),
+            info.get("openInterest"),
+            info.get("openInterestAmount"),
+            info.get("openInterestValue"),
+        ]
+
+        for candidate in candidates:
+            if candidate is None:
+                continue
+            value = self._to_float(candidate, default=float("nan"))
+            if math.isfinite(value):
+                return value
+
+        return None
+
+    def _compute_oi_change_24h(self, current_oi: float) -> Optional[float]:
+        """
+        Hyperliquid 没有直接的 24h OI 变化字段。尝试通过
+        fetch_open_interest_history 获取过去 24h 的首尾数据，
+        返回百分比变化 (当前 - 24h 前) / 24h 前 * 100。
+        失败时返回 None，不影响主流程。
+        """
+
+        if current_oi is None or not math.isfinite(current_oi):
+            return None
+
+        try:
+            since_ms = int((datetime.now(timezone.utc) - timedelta(hours=24)).timestamp() * 1000)
+            history = self.exchange.fetch_open_interest_history(
+                self.settings.symbol,
+                timeframe="1h",
+                since=since_ms,
+                limit=48,
+            )
+        except Exception:
+            return None
+
+        if not history:
+            return None
+
+        # 取最早一条作为 24h 前参考值
+        earliest = history[0] if isinstance(history, list) else history
+        if isinstance(history, list) and history:
+            earliest = sorted(
+                history,
+                key=lambda x: x.get("timestamp", 0) if isinstance(x, dict) else 0,
+            )[0]
+
+        previous_oi = self._extract_open_interest(earliest)
+        if previous_oi is None or previous_oi <= 0:
+            return None
+
+        return (current_oi - previous_oi) / previous_oi * 100
+
     def fetch_all_ohlcv(self) -> Dict[str, pd.DataFrame]:
         s = self.settings
         return {
@@ -168,8 +232,7 @@ class HyperliquidDataClient:
 
         funding = self._to_float(raw_funding, default=0.0)
 
-        # 很多交易所没 24h OI，需要自己再拉一次或用 info 字段；这里先简单置 0
-        oi_change_24h = 0.0
+        oi_change_24h = self._compute_oi_change_24h(open_interest) or 0.0
 
         # 订单簿
         orderbook = self.exchange.fetch_order_book(self.settings.symbol, limit=20)
