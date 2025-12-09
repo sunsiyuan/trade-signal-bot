@@ -1,6 +1,7 @@
 # bot/main.py
 from .config import Settings
 from .data_client import HyperliquidDataClient
+from .notify import Notifier
 from .signal_engine import SignalEngine
 
 
@@ -60,6 +61,36 @@ def print_signal(signal):
     print("===============================")
 
 
+def format_notification(signal):
+    """Build a concise notification payload for chat/webhook channels."""
+
+    snap = signal.snapshot
+    lines = [
+        "Hyperliquid Signal Update",
+        f"Symbol: {signal.symbol}",
+        f"Time: {snap.ts.isoformat() if snap else 'N/A'}",
+        f"Direction: {signal.direction}",
+        f"Confidence: {signal.confidence:.2f}",
+        f"Reason: {signal.reason}",
+    ]
+
+    if signal.direction != "none":
+        lines.extend(
+            [
+                f"Entry: {signal.entry_range or signal.entry}",
+                f"TP1/TP2: {signal.tp1} / {signal.tp2}",
+                f"SL: {signal.sl}",
+                (
+                    "Position: core="
+                    f"{signal.core_position_pct * 100:.0f}%"
+                    f", add={signal.add_position_pct * 100:.0f}%"
+                ),
+            ]
+        )
+
+    return "\n".join(lines)
+
+
 def main():
     settings = Settings()
     client = HyperliquidDataClient(settings)
@@ -69,6 +100,20 @@ def main():
     signal = engine.generate_signal(snapshot)
 
     print_signal(signal)
+
+    notifier = Notifier(
+        telegram_token=settings.telegram_token,
+        telegram_chat_id=settings.telegram_chat_id,
+        ftqq_key=settings.ftqq_key,
+        webhook_url=settings.webhook_url,
+    )
+
+    if notifier.has_channels():
+        message = format_notification(signal)
+        results = notifier.send(message=message, title="Hyperliquid Trade Signal")
+        print("Notification results:", results)
+    else:
+        print("No notification channels configured; skipping notify.")
 
 
 if __name__ == "__main__":
