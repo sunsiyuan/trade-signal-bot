@@ -19,6 +19,7 @@ class TradeSignal:
     entry_range: Optional[List[float]] = None
     tp1: Optional[float] = None
     tp2: Optional[float] = None
+    tp3: Optional[float] = None
     sl: Optional[float] = None
 
     # 仓位建议
@@ -41,11 +42,6 @@ class SignalEngine:
         """
         self.settings = settings or {}
         self.min_confidence = self._get_setting("min_confidence", 0.3)
-
-        # ATR 参数（可以外部配置）
-        self.atr_sl_mult = self._get_setting("atr_sl_mult", 0.8)
-        self.atr_tp1_mult = self._get_setting("atr_tp1_mult", 0.8)
-        self.atr_tp2_mult = self._get_setting("atr_tp2_mult", 1.6)
 
     def _get_setting(self, name: str, default):
         if hasattr(self.settings, name):
@@ -152,17 +148,35 @@ class SignalEngine:
             "debug": debug,
         }
 
-    def generate_signal(self, snap: MarketSnapshot) -> TradeSignal:
-        scores = self._score_direction(snap)
-        short_score = scores["short"]
-        long_score = scores["long"]
-        debug = scores["debug"]
-
+    def _detect_market_mode(self, snap: MarketSnapshot) -> str:
+        """基于 ATR 扩张与趋势标签做出行情分类。"""
         tf15 = snap.tf_15m
-        atr = max(tf15.atr, 1e-6)
+        tf1h = snap.tf_1h
+        tf4h = snap.tf_4h
 
-        # ---- 高胜率做空：4h下跌 + 15m严重超买 + 卖墙更重 ---- #
-        high_conf_short = (
+        atr_ratio = tf15.atr / max(tf1h.atr, 1e-6)
+        price_to_ma25 = abs(tf15.close - tf15.ma25) / max(tf15.ma25, 1e-6)
+
+        if atr_ratio > 1.2 and price_to_ma25 > 0.005:
+            return "breakout"
+
+        if tf15.rsi6 >= 78 or tf15.rsi6 <= 22:
+            if (tf4h.trend_label == "down" and tf15.rsi6 >= 78) or (
+                tf4h.trend_label == "up" and tf15.rsi6 <= 22
+            ):
+                return "sfp"
+
+        if atr_ratio < 0.85 and tf4h.trend_label == "range":
+            return "squeeze"
+
+        if tf4h.trend_label == "range" and tf1h.trend_label == "range":
+            return "range"
+
+        return "trend"
+
+    def _high_conf_short(self, snap: MarketSnapshot) -> bool:
+        tf15 = snap.tf_15m
+        return (
             snap.tf_4h.trend_label == "down"
             and snap.tf_1h.trend_label != "up"
             and tf15.rsi6 >= 80
@@ -171,8 +185,9 @@ class SignalEngine:
             )
         )
 
-        # ---- 高胜率做多：4h上升 + 15m严重超卖 + 买墙更重 ---- #
-        high_conf_long = (
+    def _high_conf_long(self, snap: MarketSnapshot) -> bool:
+        tf15 = snap.tf_15m
+        return (
             snap.tf_4h.trend_label == "up"
             and snap.tf_1h.trend_label != "down"
             and tf15.rsi6 <= 20
@@ -181,81 +196,142 @@ class SignalEngine:
             )
         )
 
-        direction: Direction = "none"
-        confidence = 0.0
-        reason = "多空得分不足，继续观望"
-        entry = tp1 = tp2 = sl = None
-
-        if high_conf_short:
-            direction = "short"
-            confidence = max(0.8, min(0.95, short_score))
-            reason = (
-                "4h 下跌趋势 + 15m 严重超买 + 上方卖盘更重，"
-                "典型反弹尾段做空窗口"
-            )
-
-        elif high_conf_long:
-            direction = "long"
-            confidence = max(0.8, min(0.95, long_score))
-            reason = (
-                "4h 上升趋势 + 15m 严重超卖 + 下方买盘更重，"
-                "典型回调尾段做多窗口"
-            )
-
-        else:
-            best_score = max(short_score, long_score)
-            if best_score < self.min_confidence:
-                return TradeSignal(
-                    symbol=snap.symbol,
-                    direction="none",
-                    confidence=best_score,
-                    reason=(
-                        f"多空得分不足（long={long_score:.2f}, "
-                        f"short={short_score:.2f}），继续观望"
-                    ),
-                    snapshot=snap,
-                    debug_scores=scores,
-                )
-            if short_score > long_score:
-                direction = "short"
-                confidence = best_score
-                reason = (
-                    f"空头得分更高（short={short_score:.2f} > "
-                    f"long={long_score:.2f}），偏空执行"
-                )
-            else:
-                direction = "long"
-                confidence = best_score
-                reason = (
-                    f"多头得分更高（long={long_score:.2f} > "
-                    f"short={short_score:.2f}），偏多执行"
-                )
-
-        entry = tf15.close
-
+    def _compute_trigger(self, entry: float, atr: float, direction: Direction) -> float:
         if direction == "short":
-            sl = entry + atr * self.atr_sl_mult
-            tp1 = entry - atr * self.atr_tp1_mult
-            tp2 = entry - atr * self.atr_tp2_mult
-        elif direction == "long":
-            sl = entry - atr * self.atr_sl_mult
-            tp1 = entry + atr * self.atr_tp1_mult
-            tp2 = entry + atr * self.atr_tp2_mult
+            return entry - 0.3 * atr
+        return entry + 0.3 * atr
 
-        core_pct = 0.7 if direction in ("long", "short") else 0.0
-        add_pct = 0.3 if direction in ("long", "short") else 0.0
+    def _compute_swing_sl(self, snap: MarketSnapshot, atr: float, direction: Direction) -> float:
+        tf15 = snap.tf_15m
+        tf1h = snap.tf_1h
+
+        buffer = 0.2 * atr
+        if direction == "short":
+            swing_high = max(tf15.ma7, tf15.ma25, tf1h.ma25, tf1h.ma7)
+            return swing_high + buffer
+
+        swing_low = min(tf15.ma7, tf15.ma25, tf1h.ma25, tf1h.ma7)
+        return swing_low - buffer
+
+    def _compute_position(self, confidence: float, regime: str) -> Dict[str, float]:
+        if regime == "range":
+            if confidence >= 0.8:
+                return {"core": 0.2, "add": 0.1}
+            return {"core": 0.0, "add": 0.0}
+
+        if confidence >= 0.85:
+            return {"core": 0.7, "add": 0.3}
+        if 0.55 <= confidence < 0.85:
+            return {"core": 0.4, "add": 0.2}
+        return {"core": 0.0, "add": 0.0}
+
+    def generate_signal(self, snap: MarketSnapshot) -> TradeSignal:
+        scores = self._score_direction(snap)
+        short_score = scores["short"]
+        long_score = scores["long"]
+        debug = scores["debug"]
+
+        bias: Direction = "short" if short_score > long_score else "long"
+        confidence = max(short_score, long_score)
+
+        if confidence < self.min_confidence:
+            return TradeSignal(
+                symbol=snap.symbol,
+                direction="none",
+                confidence=round(confidence, 2),
+                reason=(
+                    f"多空得分不足（long={long_score:.2f}, "
+                    f"short={short_score:.2f}），继续观望"
+                ),
+                snapshot=snap,
+                debug_scores=scores,
+            )
+
+        regime = self._detect_market_mode(snap)
+        snap.market_mode = regime
+
+        if regime != "trend" and confidence < 0.8:
+            return TradeSignal(
+                symbol=snap.symbol,
+                direction="none",
+                confidence=round(confidence, 2),
+                reason=f"行情模式为 {regime}，信号强度 {confidence:.2f} 不足以出手",
+                snapshot=snap,
+                debug_scores=scores,
+            )
+
+        if bias == "short" and not self._high_conf_short(snap):
+            return TradeSignal(
+                symbol=snap.symbol,
+                direction="none",
+                confidence=round(confidence, 2),
+                reason="做空条件未满足高胜率模板，等待更好的 setup",
+                snapshot=snap,
+                debug_scores=scores,
+            )
+
+        if bias == "long" and not self._high_conf_long(snap):
+            return TradeSignal(
+                symbol=snap.symbol,
+                direction="none",
+                confidence=round(confidence, 2),
+                reason="做多条件未满足高胜率模板，等待更好的 setup",
+                snapshot=snap,
+                debug_scores=scores,
+            )
+
+        tf15 = snap.tf_15m
+        atr = max(tf15.atr, 1e-6)
+        spot_price = tf15.close
+        trigger = self._compute_trigger(spot_price, atr, bias)
+
+        price_crossed = (spot_price <= trigger) if bias == "short" else (spot_price >= trigger)
+        if not price_crossed:
+            return TradeSignal(
+                symbol=snap.symbol,
+                direction="none",
+                confidence=round(confidence, 2),
+                reason=(
+                    f"信号待确认：等待价格触发 {trigger:.2f} 以执行 {bias} 入场"
+                ),
+                entry=trigger,
+                snapshot=snap,
+                debug_scores=scores,
+            )
+
+        entry = trigger
+        sl = self._compute_swing_sl(snap, atr, bias)
+        R = abs(sl - entry)
+        if R < atr * 0.25:
+            R = atr * 0.25
+
+        if bias == "short":
+            tp1 = entry - 0.5 * R
+            tp2 = entry - 1.0 * R
+            tp3 = entry - 2.0 * R
+        else:
+            tp1 = entry + 0.5 * R
+            tp2 = entry + 1.0 * R
+            tp3 = entry + 2.0 * R
+
+        position = self._compute_position(confidence, regime)
 
         return TradeSignal(
             symbol=snap.symbol,
-            direction=direction,
+            direction=bias,
             confidence=round(confidence, 2),
-            reason=reason,
+            reason=(
+                f"{regime} 模式下触发确认价，按 R 结构下单，TP/SL 动态；"
+                f"score long={long_score:.2f} / short={short_score:.2f}"
+            ),
             entry=entry,
+            entry_range=[trigger],
             tp1=tp1,
             tp2=tp2,
+            tp3=tp3,
             sl=sl,
-            core_position_pct=core_pct,
-            add_position_pct=add_pct,
+            core_position_pct=position["core"],
+            add_position_pct=position["add"],
             snapshot=snap,
-            debug_scores=scores,
+            debug_scores={**scores, "regime": regime, "trigger": trigger, "R": R},
         )
