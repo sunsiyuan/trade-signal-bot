@@ -16,6 +16,15 @@ class HyperliquidDataClient:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.exchange = ccxt.hyperliquid({"enableRateLimit": True})
+        # preload markets so symbol resolution matches Hyperliquid contracts
+        self.exchange.load_markets()
+
+    @staticmethod
+    def _to_float(value, default: float = 0.0) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
 
     def _fetch_ohlcv(self, timeframe: str, limit: int) -> pd.DataFrame:
         raw = self.exchange.fetch_ohlcv(
@@ -66,46 +75,53 @@ class HyperliquidDataClient:
         真正的精确数据可以以后直接接 Hyperliquid 官方 REST。
         """
         # ticker 中有些交易所会把 funding / oi 放 info，这里做兼容写法
-        ticker = self.exchange.fetch_ticker(self.settings.symbol)
-        info = ticker.get("info", {})
+        ticker_info: Dict = {}
+        ticker_error = None
+        try:
+            ticker = self.exchange.fetch_ticker(self.settings.symbol)
+            ticker_info = ticker.get("info", {}) or {}
+        except Exception as exc:  # pragma: no cover - network failure fallback
+            ticker_error = str(exc)
 
         funding_entry = None
         funding_source = None
         raw_funding = None
+        funding_rates_error = None
+        open_interest = self._to_float(ticker_info.get("openInterest"))
+
         try:
-            rates = self.exchange.fetch_funding_rates([self.settings.symbol])
-            # ccxt returns dict keyed by symbol for funding_rates
-            funding_entry = rates.get(self.settings.symbol) if isinstance(rates, dict) else None
-            if funding_entry is None and isinstance(rates, list):
-                funding_entry = next(
-                    (r for r in rates if r.get("symbol") == self.settings.symbol), None
+            # Hyperliquid metaAndAssetCtxs returns perps context with "funding" and
+            # "openInterest"; ccxt exposes it via fetch_funding_rates().
+            rates = self.exchange.fetch_funding_rates()
+            funding_entry = next(
+                (r for r in rates if r.get("symbol") == self.settings.symbol), None
+            )
+            if funding_entry is not None:
+                raw_funding = funding_entry.get("fundingRate")
+                funding_source = "fetch_funding_rates"
+                entry_info = funding_entry.get("info", {}) or {}
+                open_interest = self._to_float(
+                    entry_info.get("openInterest"), default=open_interest
                 )
-            raw_funding = None if funding_entry is None else funding_entry.get("fundingRate")
-            funding_source = "funding_rates"
-        except Exception:
-            # fallback to ticker info keys
-            funding_source = "funding_rates_error"
+        except Exception as exc:  # pragma: no cover - network failure fallback
+            funding_rates_error = str(exc)
 
         if raw_funding is None:
-            raw_funding = info.get("funding") or info.get("fundingRate")
+            raw_funding = ticker_info.get("funding") or ticker_info.get("fundingRate")
             if raw_funding is not None:
                 funding_source = "ticker_info"
 
-        funding = float(raw_funding) if raw_funding is not None else 0.0
+        funding = self._to_float(raw_funding, default=0.0)
 
-        print(
-            "RAW FUNDING:",
-            {
-                "ticker_info": info,
-                "funding_entry": funding_entry,
-                "funding_source": funding_source,
-            },
-        )
+        debug_payload = {
+            "ticker_info": ticker_info,
+            "ticker_error": ticker_error,
+            "funding_entry": funding_entry,
+            "funding_source": funding_source,
+            "funding_rates_error": funding_rates_error,
+        }
+        print("RAW FUNDING:", debug_payload)
         print("PARSED FUNDING:", funding)
-        open_interest = float(info.get("openInterest", 0.0))
-        if funding_entry is not None:
-            entry_info = funding_entry.get("info", {})
-            open_interest = float(entry_info.get("openInterest", open_interest))
 
         # 很多交易所没 24h OI，需要自己再拉一次或用 info 字段；这里先简单置 0
         oi_change_24h = 0.0
