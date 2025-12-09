@@ -28,6 +28,28 @@ class HyperliquidDataClient:
             columns=["timestamp", "open", "high", "low", "close", "volume"],
         )
         df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+        df.sort_values("timestamp", inplace=True)
+        df.reset_index(drop=True, inplace=True)
+        return self._drop_incomplete_last_candle(df, timeframe)
+
+    def _drop_incomplete_last_candle(
+        self, df: pd.DataFrame, timeframe: str
+    ) -> pd.DataFrame:
+        """
+        Hyperliquid returns the latest in-progress candle. Drop it so RSI/MA are
+        computed on fully closed candles, keeping values consistent with the UI.
+        """
+
+        if df.empty:
+            return df
+
+        duration = pd.to_timedelta(timeframe)
+        last_start = df["timestamp"].iloc[-1].to_pydatetime().replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+
+        if now < last_start + duration:
+            return df.iloc[:-1]
+
         return df
 
     def fetch_all_ohlcv(self) -> Dict[str, pd.DataFrame]:
@@ -47,8 +69,43 @@ class HyperliquidDataClient:
         ticker = self.exchange.fetch_ticker(self.settings.symbol)
         info = ticker.get("info", {})
 
-        funding = float(info.get("fundingRate", 0.0))
+        funding_entry = None
+        funding_source = None
+        raw_funding = None
+        try:
+            rates = self.exchange.fetch_funding_rates([self.settings.symbol])
+            # ccxt returns dict keyed by symbol for funding_rates
+            funding_entry = rates.get(self.settings.symbol) if isinstance(rates, dict) else None
+            if funding_entry is None and isinstance(rates, list):
+                funding_entry = next(
+                    (r for r in rates if r.get("symbol") == self.settings.symbol), None
+                )
+            raw_funding = None if funding_entry is None else funding_entry.get("fundingRate")
+            funding_source = "funding_rates"
+        except Exception:
+            # fallback to ticker info keys
+            funding_source = "funding_rates_error"
+
+        if raw_funding is None:
+            raw_funding = info.get("funding") or info.get("fundingRate")
+            if raw_funding is not None:
+                funding_source = "ticker_info"
+
+        funding = float(raw_funding) if raw_funding is not None else 0.0
+
+        print(
+            "RAW FUNDING:",
+            {
+                "ticker_info": info,
+                "funding_entry": funding_entry,
+                "funding_source": funding_source,
+            },
+        )
+        print("PARSED FUNDING:", funding)
         open_interest = float(info.get("openInterest", 0.0))
+        if funding_entry is not None:
+            entry_info = funding_entry.get("info", {})
+            open_interest = float(entry_info.get("openInterest", open_interest))
 
         # 很多交易所没 24h OI，需要自己再拉一次或用 info 字段；这里先简单置 0
         oi_change_24h = 0.0
