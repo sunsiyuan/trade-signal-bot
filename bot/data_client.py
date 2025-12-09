@@ -168,16 +168,6 @@ class HyperliquidDataClient:
 
         funding = self._to_float(raw_funding, default=0.0)
 
-        debug_payload = {
-            "ticker_info": ticker_info,
-            "ticker_error": ticker_error,
-            "funding_entry": funding_entry,
-            "funding_source": funding_source,
-            "funding_rates_error": funding_rates_error,
-        }
-        print("RAW FUNDING:", debug_payload)
-        print("PARSED FUNDING:", funding)
-
         # 很多交易所没 24h OI，需要自己再拉一次或用 info 字段；这里先简单置 0
         oi_change_24h = 0.0
 
