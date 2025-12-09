@@ -7,15 +7,19 @@ def ema(series: pd.Series, period: int) -> pd.Series:
 
 
 def rsi(series: pd.Series, period: int) -> pd.Series:
+    """Wilder's RSI using smoothed gains/losses (matches most exchange UIs)."""
+
     delta = series.diff()
-    up = np.where(delta > 0, delta, 0.0)
-    down = np.where(delta < 0, -delta, 0.0)
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
 
-    roll_up = pd.Series(up, index=series.index).rolling(window=period).mean()
-    roll_down = pd.Series(down, index=series.index).rolling(window=period).mean()
+    # Wilder smoothing via EMA with alpha=1/period; min_periods ensures the
+    # first valid RSI aligns with the configured window length.
+    avg_gain = gain.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
 
-    rs = roll_up / roll_down
-    rsi_series = 100.0 - 100.0 / (1.0 + rs)
+    rs = avg_gain / avg_loss
+    rsi_series = 100 - (100 / (1 + rs))
     return rsi_series
 
 
