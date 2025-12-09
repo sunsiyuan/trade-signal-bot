@@ -91,18 +91,36 @@ class HyperliquidDataClient:
 
         try:
             # Hyperliquid metaAndAssetCtxs returns perps context with "funding" and
-            # "openInterest"; ccxt exposes it via fetch_funding_rates().
+            # "openInterest"; ccxt exposes it via fetch_funding_rates(). Guard
+            # against non-dict payloads (e.g., error strings) so we don't call
+            # .get on a str and override valid ticker funding.
             rates = self.exchange.fetch_funding_rates()
-            funding_entry = next(
-                (r for r in rates if r.get("symbol") == self.settings.symbol), None
-            )
-            if funding_entry is not None:
-                raw_funding = funding_entry.get("fundingRate")
-                funding_source = "fetch_funding_rates"
-                entry_info = funding_entry.get("info", {}) or {}
-                open_interest = self._to_float(
-                    entry_info.get("openInterest"), default=open_interest
+
+            candidate = None
+            if isinstance(rates, list):
+                candidate = next(
+                    (
+                        r
+                        for r in rates
+                        if isinstance(r, dict)
+                        and r.get("symbol") == self.settings.symbol
+                    ),
+                    None,
                 )
+            elif isinstance(rates, dict) and rates.get("symbol"):
+                candidate = rates if rates.get("symbol") == self.settings.symbol else None
+
+            if candidate:
+                funding_entry = candidate
+                raw_funding = candidate.get("fundingRate")
+                funding_source = "fetch_funding_rates"
+                entry_info = candidate.get("info", {}) if isinstance(candidate, dict) else {}
+                if isinstance(entry_info, dict):
+                    open_interest = self._to_float(
+                        entry_info.get("openInterest"), default=open_interest
+                    )
+            elif rates is not None:
+                funding_rates_error = f"unexpected funding type: {type(rates).__name__}"
         except Exception as exc:  # pragma: no cover - network failure fallback
             funding_rates_error = str(exc)
 
