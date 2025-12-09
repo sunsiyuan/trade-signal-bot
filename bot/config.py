@@ -2,6 +2,13 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional
 
+from dotenv import load_dotenv
+
+
+# Load environment variables from a local .env file if present so that
+# configuration can be managed without exporting variables manually.
+load_dotenv()
+
 
 @dataclass
 class Settings:

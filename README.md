@@ -20,6 +20,8 @@ pip install -r requirements.txt
 
 python -m bot.main
 
+> 提示：本地运行时会自动读取当前目录下的 `.env` 文件，因此可以将下面提到的环境变量写入 `.env` 以便独立配置 Telegram、Server酱或 webhook 渠道。
+
 ## 通知配置
 
 如果希望在本地或 GitHub Actions 运行后推送到 Telegram、微信 Server酱或自定义 webhook，预先设置对应的环境变量即可：

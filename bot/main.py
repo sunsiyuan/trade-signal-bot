@@ -39,10 +39,6 @@ def print_signal(signal):
         f"OI_24h_change={d.oi_change_24h:.2f}, "
         f"Liquidity={d.liquidity_comment}"
     )
-    print("Top Asks (price,size):", [(w["price"], w["size"]) for w in d.orderbook_asks])
-    print("Top Bids  (price,size):", [(w["price"], w["size"]) for w in d.orderbook_bids])
-    print()
-
     # 3）信号结果
     print("=== Trade Signal ===")
     print(f"Direction : {signal.direction}")
@@ -57,7 +53,7 @@ def print_signal(signal):
             f"+ add={signal.add_position_pct * 100:.0f}%"
         )
     else:
-        print("No trade. Waiting for next setup.")
+        print("暂无交易信号，等待下一次机会。")
     print("===============================")
 
 
@@ -73,6 +69,24 @@ def format_notification(signal):
         f"Confidence: {signal.confidence:.2f}",
         f"Reason: {signal.reason}",
     ]
+
+    if snap and snap.deriv:
+        deriv = snap.deriv
+        orderbook_asks = [(w["price"], w["size"]) for w in deriv.orderbook_asks]
+        orderbook_bids = [(w["price"], w["size"]) for w in deriv.orderbook_bids]
+
+        lines.extend(
+            [
+                "",
+                "=== Derivative Indicators ===",
+                f"Funding: {deriv.funding:.6f}",
+                f"Open Interest: {deriv.open_interest:.2f}",
+                f"OI 24h Change: {deriv.oi_change_24h:.2f}",
+                f"Liquidity: {deriv.liquidity_comment}",
+                f"Top Asks: {orderbook_asks}",
+                f"Top Bids: {orderbook_bids}",
+            ]
+        )
 
     if signal.direction != "none":
         lines.extend(
