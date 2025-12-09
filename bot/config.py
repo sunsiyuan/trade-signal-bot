@@ -1,4 +1,6 @@
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, field
+from typing import Optional
 
 
 @dataclass
@@ -41,3 +43,15 @@ class Settings:
     # 仓位建议
     core_position_pct: float = 0.3    # 核心仓 30%
     add_position_pct: float = 0.2     # 加仓 20%
+
+    # 通知配置（通过环境变量注入）
+    telegram_token: Optional[str] = field(
+        default_factory=lambda: os.getenv("TELEGRAM_BOT_TOKEN")
+    )
+    telegram_chat_id: Optional[str] = field(
+        default_factory=lambda: os.getenv("TELEGRAM_CHAT_ID")
+    )
+    ftqq_key: Optional[str] = field(default_factory=lambda: os.getenv("FTQQ_KEY"))
+    webhook_url: Optional[str] = field(
+        default_factory=lambda: os.getenv("WEBHOOK_URL")
+    )

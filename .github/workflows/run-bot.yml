@@ -10,6 +10,12 @@ jobs:
   run-bot:
     runs-on: ubuntu-latest
 
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      FTQQ_KEY: ${{ secrets.FTQQ_KEY }}
+      WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -27,3 +33,27 @@ jobs:
       - name: Run basic signal bot
         run: |
           python -m bot.main
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          python - <<'PY'
+          import os
+
+          from bot.notify import Notifier
+
+          notifier = Notifier(
+              telegram_token=os.getenv("TELEGRAM_BOT_TOKEN"),
+              telegram_chat_id=os.getenv("TELEGRAM_CHAT_ID"),
+              ftqq_key=os.getenv("FTQQ_KEY"),
+              webhook_url=os.getenv("WEBHOOK_URL"),
+          )
+
+          if notifier.has_channels():
+              notifier.send(
+                  title="Hyperliquid Signal Bot",
+                  message="GitHub Actions workflow failed, check the logs for details.",
+              )
+          else:
+              print("No notification channels configured; skipping notify.")
+          PY

@@ -19,3 +19,13 @@ source venv/bin/activate   # Windows 用 venv\Scripts\activate
 pip install -r requirements.txt
 
 python -m bot.main
+
+## 通知配置
+
+如果希望在本地或 GitHub Actions 运行后推送到 Telegram、微信 Server酱或自定义 webhook，预先设置对应的环境变量即可：
+
+- `TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`
+- `FTQQ_KEY`
+- `WEBHOOK_URL`
+
+当至少配置了一个渠道时，`bot.main` 会自动发送信号摘要；GitHub Actions 失败时也会尝试推送失败提醒。
