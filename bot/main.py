@@ -1,4 +1,6 @@
 # bot/main.py
+from datetime import timezone, timedelta
+
 from .config import Settings
 from .data_client import HyperliquidDataClient
 from .notify import Notifier
@@ -9,7 +11,10 @@ def print_signal(signal):
     snap = signal.snapshot
 
     print("====== TRADE SIGNAL ======")
-    print(f"Time:   {snap.ts.isoformat()}")
+    utc_ts = snap.ts.astimezone(timezone.utc)
+    beijing_ts = utc_ts.astimezone(timezone(timedelta(hours=8)))
+    print(f"Time:   {utc_ts.isoformat()} (UTC)")
+    print(f"        {beijing_ts.isoformat()} (Beijing)")
     print(f"Symbol: {signal.symbol}")
     print()
 
@@ -61,46 +66,74 @@ def format_notification(signal):
     """Build a concise notification payload for chat/webhook channels."""
 
     snap = signal.snapshot
-    lines = [
-        "Hyperliquid Signal Update",
-        f"Symbol: {signal.symbol}",
-        f"Time: {snap.ts.isoformat() if snap else 'N/A'}",
-        f"Direction: {signal.direction}",
-        f"Confidence: {signal.confidence:.2f}",
-        f"Reason: {signal.reason}",
-    ]
+    lines = ["====== TRADE SIGNAL ======"]
 
-    if snap and snap.deriv:
-        deriv = snap.deriv
-        orderbook_asks = [(w["price"], w["size"]) for w in deriv.orderbook_asks]
-        orderbook_bids = [(w["price"], w["size"]) for w in deriv.orderbook_bids]
+    if snap:
+        utc_ts = snap.ts.astimezone(timezone.utc)
+        beijing_ts = utc_ts.astimezone(timezone(timedelta(hours=8)))
+        lines.extend(
+            [
+                f"Time:   {utc_ts.isoformat()} (UTC)",
+                f"        {beijing_ts.isoformat()} (Beijing)",
+                f"Symbol: {signal.symbol}",
+                "",
+            ]
+        )
+
+        def tf_row(tf):
+            return (
+                f"{tf.timeframe:>4} | "
+                f"close={tf.close:.4f} | "
+                f"MA7={tf.ma7:.2f}, MA25={tf.ma25:.2f}, MA99={tf.ma99:.2f} | "
+                f"RSI6={tf.rsi6:.2f}, RSI12={tf.rsi12:.2f}, RSI24={tf.rsi24:.2f} | "
+                f"MACD={tf.macd:.4f}, SIG={tf.macd_signal:.4f}, HIST={tf.macd_hist:.4f} | "
+                f"ATR={tf.atr:.4f} | Trend={tf.trend_label}"
+            )
 
         lines.extend(
             [
-                "",
-                "=== Derivative Indicators ===",
-                f"Funding: {deriv.funding:.6f}",
-                f"Open Interest: {deriv.open_interest:.2f}",
-                f"OI 24h Change: {deriv.oi_change_24h:.2f}",
-                f"Liquidity: {deriv.liquidity_comment}",
-                f"Top Asks: {orderbook_asks}",
-                f"Top Bids: {orderbook_bids}",
+                "=== Timeframe Indicators ===",
+                tf_row(snap.tf_4h),
+                tf_row(snap.tf_1h),
+                tf_row(snap.tf_15m),
             ]
         )
+
+    lines.extend(
+        [
+            "", "=== Derivative Indicators ===",
+            f"Funding: {snap.deriv.funding * 100:.4f}%" if snap and snap.deriv else "Funding: N/A",
+            f"Open Interest: {snap.deriv.open_interest:.2f}" if snap and snap.deriv else "Open Interest: N/A",
+            f"OI 24h Change: {snap.deriv.oi_change_24h:.2f}" if snap and snap.deriv else "OI 24h Change: N/A",
+            f"Liquidity: {snap.deriv.liquidity_comment}" if snap and snap.deriv else "Liquidity: N/A",
+        ]
+    )
+
+    lines.extend(
+        [
+            "", "=== Trade Signal ===",
+            f"Direction : {signal.direction}",
+            f"Confidence: {signal.confidence:.2f}",
+            f"Reason    : {signal.reason}",
+        ]
+    )
 
     if signal.direction != "none":
         lines.extend(
             [
-                f"Entry: {signal.entry_range or signal.entry}",
-                f"TP1/TP2: {signal.tp1} / {signal.tp2}",
-                f"SL: {signal.sl}",
+                f"Entry range: {signal.entry_range or signal.entry}",
+                f"TP1: {signal.tp1} | TP2: {signal.tp2} | SL: {signal.sl}",
                 (
                     "Position: core="
                     f"{signal.core_position_pct * 100:.0f}%"
-                    f", add={signal.add_position_pct * 100:.0f}%"
+                    f" + add={signal.add_position_pct * 100:.0f}%"
                 ),
             ]
         )
+    else:
+        lines.append("暂无交易信号，等待下一次机会。")
+
+    lines.append("===============================")
 
     return "\n".join(lines)
 
