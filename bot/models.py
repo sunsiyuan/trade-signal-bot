@@ -49,3 +49,4 @@ class MarketSnapshot:
     tf_1h: TimeframeIndicators
     tf_15m: TimeframeIndicators
     deriv: DerivativeIndicators
+    market_mode: str = "range"
