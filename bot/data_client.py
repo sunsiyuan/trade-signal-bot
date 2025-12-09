@@ -1,7 +1,7 @@
 import ccxt
 import pandas as pd
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from .config import Settings
 from .indicators import ema, rsi, macd, atr, detect_trend
@@ -18,6 +18,7 @@ class HyperliquidDataClient:
         self.exchange = ccxt.hyperliquid({"enableRateLimit": True})
         # preload markets so symbol resolution matches Hyperliquid contracts
         self.exchange.load_markets()
+        self.market = self.exchange.market(self.settings.symbol)
 
     @staticmethod
     def _to_float(value, default: float = 0.0) -> float:
@@ -61,6 +62,38 @@ class HyperliquidDataClient:
 
         return df
 
+    def _normalize_symbol(self, symbol: str) -> str:
+        if not isinstance(symbol, str):
+            return ""
+        return symbol.replace(":", "/").upper()
+
+    def _symbol_matches(self, candidate_symbol: str) -> bool:
+        target_symbols = {
+            self._normalize_symbol(self.settings.symbol),
+            self._normalize_symbol(self.market.get("symbol")),
+            self._normalize_symbol(self.market.get("id")),
+        }
+        return self._normalize_symbol(candidate_symbol) in target_symbols
+
+    def _extract_funding(self, entry: Dict) -> Optional[float]:
+        if not isinstance(entry, dict):
+            return None
+
+        info = entry.get("info", {}) if isinstance(entry.get("info"), dict) else {}
+
+        candidates = [
+            entry.get("fundingRate"),
+            entry.get("nextFundingRate"),
+            entry.get("predictedFundingRate"),
+            entry.get("lastFundingRate"),
+            info.get("fundingRate"),
+            info.get("funding"),
+            info.get("nextFundingRate"),
+            info.get("predictedFundingRate"),
+        ]
+
+        return next((c for c in candidates if c is not None), None)
+
     def fetch_all_ohlcv(self) -> Dict[str, pd.DataFrame]:
         s = self.settings
         return {
@@ -103,16 +136,20 @@ class HyperliquidDataClient:
                         r
                         for r in rates
                         if isinstance(r, dict)
-                        and r.get("symbol") == self.settings.symbol
+                        and self._symbol_matches(r.get("symbol"))
                     ),
                     None,
                 )
             elif isinstance(rates, dict) and rates.get("symbol"):
-                candidate = rates if rates.get("symbol") == self.settings.symbol else None
+                candidate = (
+                    rates
+                    if self._symbol_matches(rates.get("symbol"))
+                    else None
+                )
 
             if candidate:
                 funding_entry = candidate
-                raw_funding = candidate.get("fundingRate")
+                raw_funding = self._extract_funding(candidate)
                 funding_source = "fetch_funding_rates"
                 entry_info = candidate.get("info", {}) if isinstance(candidate, dict) else {}
                 if isinstance(entry_info, dict):
@@ -149,11 +186,19 @@ class HyperliquidDataClient:
         asks_raw: List[List[float]] = orderbook.get("asks", [])
         bids_raw: List[List[float]] = orderbook.get("bids", [])
 
+        def _format_price(price: float) -> float:
+            try:
+                return float(
+                    self.exchange.price_to_precision(self.settings.symbol, price)
+                )
+            except Exception:
+                return float(price)
+
         orderbook_asks = [
-            {"price": float(p), "size": float(s)} for p, s in asks_raw[:10]
+            {"price": _format_price(p), "size": float(s)} for p, s in asks_raw[:10]
         ]
         orderbook_bids = [
-            {"price": float(p), "size": float(s)} for p, s in bids_raw[:10]
+            {"price": _format_price(p), "size": float(s)} for p, s in bids_raw[:10]
         ]
 
         liquidity_comment = "asks>bids" if sum(a["size"] for a in orderbook_asks) > sum(
