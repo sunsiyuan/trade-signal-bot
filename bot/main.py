@@ -274,8 +274,13 @@ def main():
     )
 
     if notifier.has_channels():
-        message = format_notification(signal)
-        results = notifier.send(message=message, title="Hyperliquid Trade Signal")
+        message = format_notification(signal, threshold=settings.signal_confidence_threshold)
+        execution_mode = signal.direction != "none" and signal.confidence >= settings.signal_confidence_threshold
+        results = notifier.send(
+            message=message,
+            title="Hyperliquid Trade Signal",
+            include_ftqq=execution_mode,
+        )
         print("Notification results:", results)
     else:
         print("No notification channels configured; skipping notify.")
