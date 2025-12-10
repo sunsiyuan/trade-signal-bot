@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional
 
 from .config import Settings
-from .indicators import ema, rsi, macd, atr, detect_trend
+from .indicators import ema, compute_rsi, macd, atr, detect_trend
 from .models import (
     TimeframeIndicators,
     DerivativeIndicators,
@@ -271,14 +271,30 @@ class HyperliquidDataClient:
         s = self.settings
 
         close = df["close"]
+        closes_list = close.tolist()
 
         ma7 = ema(close, 7)
         ma25 = ema(close, 25)
         ma99 = ema(close, 99)
 
-        rsi6 = rsi(close, s.rsi_fast)
-        rsi12 = rsi(close, s.rsi_mid)
-        rsi24 = rsi(close, s.rsi_slow)
+        rsi6_series = compute_rsi(closes_list, s.rsi_fast).set_axis(close.index)
+        rsi12_series = compute_rsi(closes_list, s.rsi_mid).set_axis(close.index)
+        rsi24_series = compute_rsi(closes_list, s.rsi_slow).set_axis(close.index)
+
+        rsi6_value = float(rsi6_series.iloc[-1])
+        rsi12_value = float(rsi12_series.iloc[-1])
+        rsi24_value = float(rsi24_series.iloc[-1])
+
+        if (
+            self.settings.debug_rsi
+            and self.settings.symbol == "HYPE/USDC:USDC"
+            and timeframe == "15m"
+        ):
+            print(
+                f"[RSI_DEBUG] tf=15m symbol={self.settings.symbol} "
+                f"last_closes={closes_list[-10:]} "
+                f"rsi6={rsi6_value:.2f} rsi12={rsi12_value:.2f} rsi24={rsi24_value:.2f}"
+            )
 
         macd_line, macd_signal, macd_hist = macd(
             close,
@@ -298,9 +314,9 @@ class HyperliquidDataClient:
             ma7=float(ma7.iloc[-1]),
             ma25=float(ma25.iloc[-1]),
             ma99=float(ma99.iloc[-1]),
-            rsi6=float(rsi6.iloc[-1]),
-            rsi12=float(rsi12.iloc[-1]),
-            rsi24=float(rsi24.iloc[-1]),
+            rsi6=rsi6_value,
+            rsi12=rsi12_value,
+            rsi24=rsi24_value,
             macd=float(macd_line.iloc[-1]),
             macd_signal=float(macd_signal.iloc[-1]),
             macd_hist=float(macd_hist.iloc[-1]),

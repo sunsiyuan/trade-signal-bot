@@ -62,3 +62,8 @@ class Settings:
     webhook_url: Optional[str] = field(
         default_factory=lambda: os.getenv("WEBHOOK_URL")
     )
+
+    # Debug flags
+    debug_rsi: bool = field(
+        default_factory=lambda: os.getenv("DEBUG_RSI", "").lower() in {"1", "true", "yes"}
+    )
