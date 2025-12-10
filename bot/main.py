@@ -71,10 +71,17 @@ def format_notification(signal, threshold: float = 0.8):
     if not snap:
         return "Market snapshot unavailable; awaiting next refresh."
 
+    def _fmt_with_commas(value: float, decimals: int) -> str:
+        if value is None:
+            return "N/A"
+        fmt = f"{value:,.{decimals}f}" if abs(value) >= 1000 else f"{value:.{decimals}f}"
+        return fmt
+
     def _fmt_price(value: float) -> str:
         if value is None:
             return "N/A"
-        return f"{value:.4f}" if value and abs(value) < 100 else f"{value:.2f}"
+        decimals = 4 if value and abs(value) < 100 else 2
+        return _fmt_with_commas(value, decimals)
 
     def _macd_state(tf) -> str:
         if tf.macd_hist > 0 and tf.macd > tf.macd_signal:
@@ -135,7 +142,7 @@ def format_notification(signal, threshold: float = 0.8):
             skew = "Bids dominant"
         else:
             skew = "Balanced"
-        summary = f"Asks {asks:.0f} vs Bids {bids:.0f}"
+        summary = f"Asks {_fmt_with_commas(asks, 0)} vs Bids {_fmt_with_commas(bids, 0)}"
         return summary, skew
 
     def _confidence_label():
@@ -204,10 +211,11 @@ def format_notification(signal, threshold: float = 0.8):
     ]
 
     oi_change = snap.deriv.oi_change_24h
+    formatted_oi = _fmt_with_commas(snap.deriv.open_interest, 2)
     oi_line = (
-        f"• OI: {snap.deriv.open_interest:.2f}"
+        f"• OI: {formatted_oi}"
         if oi_change is None
-        else f"• OI: {snap.deriv.open_interest:.2f} → {_oi_state()} ({oi_change:+.2f}%)"
+        else f"• OI: {formatted_oi} → {_oi_state()} ({oi_change:+.2f}%)"
     )
 
     core_metrics = [
