@@ -38,10 +38,11 @@ def print_signal(signal):
     # 2）衍生品指标
     d = snap.deriv
     print("=== Derivative Indicators ===")
+    oi_change_text = "N/A" if d.oi_change_24h is None else f"{d.oi_change_24h:.2f}"
     print(
         f"Funding={d.funding:.6f}, "
         f"OI={d.open_interest:.2f}, "
-        f"OI_24h_change={d.oi_change_24h:.2f}, "
+        f"OI_24h_change={oi_change_text}, "
         f"Liquidity={d.liquidity_comment}"
     )
     # 3）信号结果
@@ -113,6 +114,8 @@ def format_notification(signal, threshold: float = 0.8):
 
     def _oi_state():
         change = snap.deriv.oi_change_24h
+        if change is None:
+            return "N/A"
         if change > 1.5:
             return "Rising OI"
         if change < -1.5:
@@ -200,6 +203,13 @@ def format_notification(signal, threshold: float = 0.8):
         "",
     ]
 
+    oi_change = snap.deriv.oi_change_24h
+    oi_line = (
+        f"• OI: {snap.deriv.open_interest:.2f}"
+        if oi_change is None
+        else f"• OI: {snap.deriv.open_interest:.2f} → {_oi_state()} ({oi_change:+.2f}%)"
+    )
+
     core_metrics = [
         "📍 Core Metrics",
         f"• 4H RSI6: {snap.tf_4h.rsi6:.2f} | MACD: {_macd_summary(snap.tf_4h)}",
@@ -209,7 +219,7 @@ def format_notification(signal, threshold: float = 0.8):
         "• ATR(15m / 1h): "
         f"{snap.tf_15m.atr:.4f} / {snap.tf_1h.atr:.4f} → {_atr_comment()}",
         f"• Funding: {snap.deriv.funding * 100:.4f}%",
-        f"• OI: {snap.deriv.open_interest:.2f} → {_oi_state()} ({snap.deriv.oi_change_24h:+.2f}%)",
+        oi_line,
         "",
         "-------------------",
         "",

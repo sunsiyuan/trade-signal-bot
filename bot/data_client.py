@@ -232,7 +232,7 @@ class HyperliquidDataClient:
 
         funding = self._to_float(raw_funding, default=0.0)
 
-        oi_change_24h = self._compute_oi_change_24h(open_interest) or 0.0
+        oi_change_24h = self._compute_oi_change_24h(open_interest)
 
         # 订单簿
         orderbook = self.exchange.fetch_order_book(self.settings.symbol, limit=20)
