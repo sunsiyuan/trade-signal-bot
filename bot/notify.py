@@ -54,7 +54,12 @@ class Notifier:
         """
 
         url = f"https://api.telegram.org/bot{self.telegram_token}/sendMessage"
-        payload = {"chat_id": self.telegram_chat_id, "text": message}
+        payload = {
+            "chat_id": self.telegram_chat_id,
+            "text": message,
+            "parse_mode": "Markdown",
+            "disable_web_page_preview": True,
+        }
 
         try:
             response = self.session.post(url, json=payload, timeout=10)
