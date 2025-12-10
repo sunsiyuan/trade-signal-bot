@@ -55,7 +55,12 @@ class Notifier:
 
         url = f"https://api.telegram.org/bot{self.telegram_token}/sendMessage"
         payload = {"chat_id": self.telegram_chat_id, "text": message}
-        response = self.session.post(url, json=payload, timeout=10)
+
+        try:
+            response = self.session.post(url, json=payload, timeout=10)
+        except requests.RequestException:
+            return False
+
         return response.ok
 
     def send_wechat_ftqq(self, title: str, message: str) -> bool:
@@ -63,14 +68,24 @@ class Notifier:
 
         url = f"https://sctapi.ftqq.com/{self.ftqq_key}.send"
         payload = {"title": title, "desp": message}
-        response = self.session.post(url, data=payload, timeout=10)
+
+        try:
+            response = self.session.post(url, data=payload, timeout=10)
+        except requests.RequestException:
+            return False
+
         return response.ok
 
     def send_webhook(self, message: str) -> bool:
         """Send a generic webhook notification with a simple JSON payload."""
 
         payload = {"text": message}
-        response = self.session.post(self.webhook_url, json=payload, timeout=10)
+
+        try:
+            response = self.session.post(self.webhook_url, json=payload, timeout=10)
+        except requests.RequestException:
+            return False
+
         return response.ok
 
 
