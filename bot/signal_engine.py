@@ -133,14 +133,24 @@ class SignalEngine:
             long_score += 0.1
             debug.append(("funding_negative_crowded_shorts", +0.1))
 
-        # ---- 6. OI 变化：杠杆堆积方向 ---- #
-        if deriv.oi_change_24h > 0.1:
-            if tf15.rsi6 >= 80:
+        # ---- 6. 波动 & 流动性异常 ---- #
+        # 利用 15m vs 1h ATR 比例 + 价格偏离 + orderbook 倾斜
+        atr_ratio = tf15.atr / max(tf1h.atr, 1e-6)
+        price_to_ma25 = abs(tf15.close - tf15.ma25) / max(tf15.ma25, 1e-6)
+
+        # 认为是“短周期明显放量波动”的阈值
+        is_vol_spike = atr_ratio > 1.3 and price_to_ma25 > 0.007
+
+        if is_vol_spike:
+            # 如果盘口卖单明显更重，且价格在均线之上 → 偏空
+            if liquidity == "asks>bids" and tf15.close >= tf15.ma25:
                 short_score += 0.1
-                debug.append(("oi_up_with_overbought", +0.1))
-            if tf15.rsi6 <= 20:
+                debug.append(("vol_spike_with_heavy_asks", +0.1))
+
+            # 如果盘口买单明显更重，且价格在均线之下 → 偏多
+            if liquidity == "bids>asks" and tf15.close <= tf15.ma25:
                 long_score += 0.1
-                debug.append(("oi_up_with_oversold", +0.1))
+                debug.append(("vol_spike_with_heavy_bids", +0.1))
 
         return {
             "short": short_score,
