@@ -34,7 +34,7 @@ class DerivativeIndicators:
     """衍生品情绪相关指标：Funding / OI / 盘口等。"""
     funding: float                  # 当前 funding rate
     open_interest: float            # 当前 OI
-    oi_change_24h: float            # 最近24h OI 变化 %
+    oi_change_24h: Optional[float]  # 最近24h OI 变化 %，拉取失败时为 None
     orderbook_asks: List[Dict]      # 顶部卖单墙 [{price, size}, ...]
     orderbook_bids: List[Dict]      # 底部买单墙
     liquidity_comment: str = ""     # 对流动性的简单文字判断（可选）
