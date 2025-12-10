@@ -41,6 +41,7 @@ class Settings:
     # 判定阈值（你后面可以调）
     rsi_short_trigger: float = 60.0   # 做空触发：15m RSI-6/12/24 共振 >= 该区间
     rsi_long_trigger: float = 30.0    # 做多触发：15m RSI-6/12/24 共振 <= 该值
+    signal_confidence_threshold: float = 0.8  # 执行模式/方糖提醒的信心阈值
 
     # ATR 倍数用于止损/止盈
     atr_sl_mult: float = 1.5

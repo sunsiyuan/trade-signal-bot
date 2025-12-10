@@ -27,8 +27,17 @@ class Notifier:
             or self.webhook_url
         )
 
-    def send(self, message: str, title: str = "Trade Signal") -> Dict[str, bool]:
+    def send(
+        self,
+        message: str,
+        title: str = "Trade Signal",
+        include_ftqq: bool = True,
+    ) -> Dict[str, bool]:
         """Send notifications to all configured channels.
+
+        ``include_ftqq`` allows callers to suppress Server酱 pushes for
+        low-priority/status updates while still emitting Telegram/webhook
+        messages.
 
         Returns a mapping of channel name to success flag. Channels without
         configuration are skipped.
@@ -39,7 +48,7 @@ class Notifier:
         if self.telegram_token and self.telegram_chat_id:
             results["telegram"] = self.send_telegram(message)
 
-        if self.ftqq_key:
+        if include_ftqq and self.ftqq_key:
             results["wechat_ftqq"] = self.send_wechat_ftqq(title=title, message=message)
 
         if self.webhook_url:
@@ -54,7 +63,12 @@ class Notifier:
         """
 
         url = f"https://api.telegram.org/bot{self.telegram_token}/sendMessage"
-        payload = {"chat_id": self.telegram_chat_id, "text": message}
+        payload = {
+            "chat_id": self.telegram_chat_id,
+            "text": message,
+            "parse_mode": "Markdown",
+            "disable_web_page_preview": True,
+        }
 
         try:
             response = self.session.post(url, json=payload, timeout=10)
