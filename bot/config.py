@@ -1,6 +1,6 @@
 import os
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import List, Optional
 
 from dotenv import load_dotenv
 
@@ -14,6 +14,16 @@ load_dotenv()
 class Settings:
     # 交易标的
     symbol: str = "HYPE/USDC:USDC"
+
+    # 要同时跟踪的合约列表（默认为 HYPE、ETH、SOL、ZEC）
+    tracked_symbols: List[str] = field(
+        default_factory=lambda: [
+            "HYPE/USDC:USDC",
+            "ETH/USDC:USDC",
+            "SOL/USDC:USDC",
+            "ZEC/USDC:USDC",
+        ]
+    )
 
     # 时间周期
     tf_4h: str = "4h"
