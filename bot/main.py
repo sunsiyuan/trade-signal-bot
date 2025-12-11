@@ -158,6 +158,8 @@ def format_notification(signal, threshold: float = 0.8):
             return "Ladder"
         if signal.entry_range:
             return "Limit"
+        if not signal.entry:
+            return "N/A"
         return "Market"
 
     def _format_levels():
@@ -180,13 +182,17 @@ def format_notification(signal, threshold: float = 0.8):
                 return "Execute long now; align size with plan and protect with SL."
             if exec_type == "Ladder":
                 return "Layer long orders; watch fills and adjust TP/SL accordingly."
-            return "Place long limit; wait for trigger and keep alerts on."
+            if exec_type == "Limit":
+                return "Place long limit; wait for trigger and keep alerts on."
+            return "No trade trigger yet — stay patient and monitor key levels."
         if direction == "short":
             if exec_type == "Market":
                 return "Hit market short; confirm size and trailing plan."
             if exec_type == "Ladder":
                 return "Stagger short limits; tighten risk once filled."
-            return "Set short limit at trigger and monitor."
+            if exec_type == "Limit":
+                return "Set short limit at trigger and monitor."
+            return "No trade trigger yet — stay patient and monitor key levels."
         return "No trade trigger yet — stay patient and monitor key levels."
 
     trend_emoji, trend_phrase = _trend_phrase()
@@ -204,14 +210,31 @@ def format_notification(signal, threshold: float = 0.8):
     header = [
         f"📌 {signal.symbol} — Trade Signal Update",
         f"⏱ {local_time_string} (UTC+8)",
-        "",
         f"💰 Price: {_fmt_price(snap.tf_15m.close)}",
         f"📈 Trend: {trend_emoji} {trend_phrase}",
         f"🧩 Decision: {decision_emoji} {decision_text}",
+    ]
+
+    summary_lines = [
         "",
         "-------------------",
         "",
+        "🏁 Summary",
+        f"• Decision: {decision_emoji} {decision_text}",
+        f"• Direction: {signal.direction}",
+        f"• Execution: {execution_type if not status_mode else 'N/A'}",
+        f"• Confidence: {conf_text}",
+        f"• Reason: {signal.reason or _contextual_comment(execution_type)}",
     ]
+
+    if not status_mode:
+        summary_lines.extend(
+            [
+                f"• Entry: {' → '.join(entries)}" if entries else "• Entry: -",
+                f"• TP: {tp_lines}" if tp_lines else "• TP: -",
+                f"• SL: {sl_line}" if sl_line else "• SL: -",
+            ]
+        )
 
     oi_change = snap.deriv.oi_change_24h
     formatted_oi = _fmt_with_commas(snap.deriv.open_interest, 2)
@@ -222,12 +245,15 @@ def format_notification(signal, threshold: float = 0.8):
     )
 
     core_metrics = [
+        "",
+        "-------------------",
+        "",
         "📍 Core Metrics",
         f"• 4H RSI6: {snap.tf_4h.rsi6:.2f} | MACD: {_macd_summary(snap.tf_4h)}",
         f"• 1H RSI6: {snap.tf_1h.rsi6:.2f} | MACD: {_macd_summary(snap.tf_1h)}",
         f"• 15m RSI6: {snap.tf_15m.rsi6:.2f} | MACD: {_macd_summary(snap.tf_15m)}",
         "",
-        "• ATR(15m / 1h): "
+        "• ATR(15m / 1h): ",
         f"{snap.tf_15m.atr:.4f} / {snap.tf_1h.atr:.4f} → {_atr_comment()}",
         f"• Funding: {snap.deriv.funding * 100:.4f}%",
         oi_line,
@@ -246,7 +272,7 @@ def format_notification(signal, threshold: float = 0.8):
             "🔔 Reminder",
             signal.reason or _contextual_comment(execution_type),
         ]
-        return "\n".join(header + core_metrics + reminder)
+        return "\n".join(header + summary_lines + core_metrics + reminder)
 
     action_lines = [
         "",
@@ -274,8 +300,7 @@ def format_notification(signal, threshold: float = 0.8):
         _contextual_comment(execution_type),
     ]
 
-    return "\n".join(header + core_metrics + action_lines + reminder)
-
+    return "\n".join(header + summary_lines + core_metrics + action_lines + reminder)
 
 def main():
     base_settings = Settings()
