@@ -1,5 +1,8 @@
 # bot/main.py
+from dataclasses import replace
 from datetime import timezone, timedelta
+
+import ccxt
 
 from .config import Settings
 from .data_client import HyperliquidDataClient
@@ -275,27 +278,50 @@ def format_notification(signal, threshold: float = 0.8):
 
 
 def main():
-    settings = Settings()
-    client = HyperliquidDataClient(settings)
-    snapshot = client.build_market_snapshot()
+    base_settings = Settings()
+    tracked = base_settings.tracked_symbols or [base_settings.symbol]
 
-    engine = SignalEngine(settings)
-    signal = engine.generate_signal(snapshot)
+    exchange = ccxt.hyperliquid({"enableRateLimit": True})
+    exchange.load_markets()
 
-    print_signal(signal)
+    funding_rates = None
+    try:
+        funding_rates = exchange.fetch_funding_rates()
+    except Exception:
+        funding_rates = None
 
+    engine = SignalEngine(base_settings)
     notifier = Notifier(
-        telegram_token=settings.telegram_token,
-        telegram_chat_id=settings.telegram_chat_id,
-        ftqq_key=settings.ftqq_key,
-        webhook_url=settings.webhook_url,
+        telegram_token=base_settings.telegram_token,
+        telegram_chat_id=base_settings.telegram_chat_id,
+        ftqq_key=base_settings.ftqq_key,
+        webhook_url=base_settings.webhook_url,
     )
 
-    if notifier.has_channels():
-        message = format_notification(signal, threshold=settings.signal_confidence_threshold)
-        execution_mode = signal.direction != "none" and signal.confidence >= settings.signal_confidence_threshold
+    signals = []
+    for symbol in tracked:
+        symbol_settings = replace(base_settings, symbol=symbol)
+        client = HyperliquidDataClient(
+            symbol_settings, exchange=exchange, funding_rates=funding_rates
+        )
+        snapshot = client.build_market_snapshot()
+        signal = engine.generate_signal(snapshot)
+        signals.append(signal)
+
+        print_signal(signal)
+
+    if notifier.has_channels() and signals:
+        messages = [
+            format_notification(sig, threshold=base_settings.signal_confidence_threshold)
+            for sig in signals
+        ]
+        execution_mode = any(
+            sig.direction != "none"
+            and sig.confidence >= base_settings.signal_confidence_threshold
+            for sig in signals
+        )
         results = notifier.send(
-            message=message,
+            message="\n\n".join(messages),
             title="Hyperliquid Trade Signal",
             include_ftqq=execution_mode,
         )

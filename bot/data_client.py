@@ -14,12 +14,20 @@ from .models import (
 
 
 class HyperliquidDataClient:
-    def __init__(self, settings: Settings):
+    def __init__(
+        self,
+        settings: Settings,
+        exchange: Optional[ccxt.hyperliquid] = None,
+        funding_rates: Optional[Dict] = None,
+    ):
         self.settings = settings
-        self.exchange = ccxt.hyperliquid({"enableRateLimit": True})
-        # preload markets so symbol resolution matches Hyperliquid contracts
-        self.exchange.load_markets()
+        self.exchange = exchange or ccxt.hyperliquid({"enableRateLimit": True})
+        if exchange is None:
+            # preload markets so symbol resolution matches Hyperliquid contracts
+            self.exchange.load_markets()
         self.market = self.exchange.market(self.settings.symbol)
+        # 可重用的 funding_rates，让多品种模式只调用一次 API
+        self.funding_rates = funding_rates
 
     @staticmethod
     def _to_float(value, default: float = 0.0) -> float:
@@ -191,7 +199,9 @@ class HyperliquidDataClient:
             # "openInterest"; ccxt exposes it via fetch_funding_rates(). Guard
             # against non-dict payloads (e.g., error strings) so we don't call
             # .get on a str and override valid ticker funding.
-            rates = self.exchange.fetch_funding_rates()
+            rates = self.funding_rates
+            if rates is None:
+                rates = self.exchange.fetch_funding_rates()
 
             candidate = None
             if isinstance(rates, list):
