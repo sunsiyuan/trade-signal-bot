@@ -4,6 +4,9 @@ from typing import Optional, List, Dict
 
 from .config import Settings
 from .models import MarketSnapshot, Direction
+from .regime_detector import detect_regime, RegimeSignal
+from .strategy_mean_reversion import build_mean_reversion_signal
+from .strategy_liquidity_hunt import build_liquidity_hunt_signal
 
 
 @dataclass
@@ -235,11 +238,12 @@ class SignalEngine:
             return {"core": 0.4, "add": 0.2}
         return {"core": 0.0, "add": 0.0}
 
-    def generate_signal(self, snap: MarketSnapshot) -> TradeSignal:
+    def _build_trend_follow_signal(
+        self, snap: MarketSnapshot, regime_signal: RegimeSignal
+    ) -> TradeSignal:
         scores = self._score_direction(snap)
         short_score = scores["short"]
         long_score = scores["long"]
-        debug = scores["debug"]
 
         bias: Direction = "short" if short_score > long_score else "long"
         confidence = max(short_score, long_score)
@@ -257,10 +261,10 @@ class SignalEngine:
                 debug_scores=scores,
             )
 
-        regime = self._detect_market_mode(snap)
+        regime = regime_signal.regime
         snap.market_mode = regime
 
-        if regime != "trend" and confidence < 0.8:
+        if regime != "trending" and confidence < 0.8:
             return TradeSignal(
                 symbol=snap.symbol,
                 direction="none",
@@ -345,3 +349,51 @@ class SignalEngine:
             snapshot=snap,
             debug_scores={**scores, "regime": regime, "trigger": trigger, "R": R},
         )
+
+    def generate_signal(self, snap: MarketSnapshot) -> TradeSignal:
+        regime_signal = detect_regime(snap, self.settings)
+        regime = regime_signal.regime
+
+        candidates: List[TradeSignal] = []
+        fallback: Optional[TradeSignal] = None
+
+        if regime == "trending":
+            trend_sig = self._build_trend_follow_signal(snap, regime_signal)
+            if trend_sig:
+                trend_sig.reason = (
+                    f"[trend] {trend_sig.reason} | regime={regime} | {regime_signal.reason}"
+                )
+                if trend_sig.direction != "none":
+                    candidates.append(trend_sig)
+                else:
+                    fallback = trend_sig
+        else:
+            mr_sig = build_mean_reversion_signal(snap, regime, self.settings)
+            if mr_sig is not None:
+                mr_sig.reason = (
+                    f"[mean_reversion] {mr_sig.reason} | regime={regime} | {regime_signal.reason}"
+                )
+                candidates.append(mr_sig)
+
+            if regime == "high_vol_ranging":
+                lh_sig = build_liquidity_hunt_signal(snap, regime, self.settings)
+                if lh_sig is not None:
+                    lh_sig.reason = (
+                        f"[liquidity_hunt] {lh_sig.reason} | regime={regime} | {regime_signal.reason}"
+                    )
+                    candidates.append(lh_sig)
+
+        if not candidates:
+            if fallback:
+                return fallback
+
+            return TradeSignal(
+                symbol=snap.symbol,
+                direction="none",
+                confidence=0.0,
+                reason=f"No setup | regime={regime} | {regime_signal.reason}",
+                snapshot=snap,
+            )
+
+        best = max(candidates, key=lambda s: s.confidence)
+        return best

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal, Optional, List, Dict
 from datetime import datetime
 
@@ -28,6 +28,15 @@ class TimeframeIndicators:
 
     trend_label: str = "range"  # "up" / "down" / "range"
 
+    # 历史与形态辅助
+    ma25_history: List[float] = field(default_factory=list)
+    rsi6_history: List[float] = field(default_factory=list)
+    recent_high: Optional[float] = None
+    recent_low: Optional[float] = None
+    high_last_n: List[float] = field(default_factory=list)
+    low_last_n: List[float] = field(default_factory=list)
+    post_spike_small_body_count: int = 0
+
 
 @dataclass
 class DerivativeIndicators:
@@ -35,9 +44,17 @@ class DerivativeIndicators:
     funding: float                  # 当前 funding rate
     open_interest: float            # 当前 OI
     oi_change_24h: Optional[float]  # 最近24h OI 变化 %，拉取失败时为 None
-    orderbook_asks: List[Dict]      # 顶部卖单墙 [{price, size}, ...]
-    orderbook_bids: List[Dict]      # 底部买单墙
+    oi_change_pct: Optional[float] = None  # 近几根K的 OI 变化百分比
+    orderbook_asks: List[Dict] = field(default_factory=list)  # 顶部卖单墙 [{price, size}, ...]
+    orderbook_bids: List[Dict] = field(default_factory=list)  # 底部买单墙
     liquidity_comment: str = ""     # 对流动性的简单文字判断（可选）
+
+    # Orderbook 墙体辅助信息
+    ask_wall_size: Optional[float] = None
+    bid_wall_size: Optional[float] = None
+    ask_to_bid_ratio: Optional[float] = None
+    has_large_ask_wall: bool = False
+    has_large_bid_wall: bool = False
 
 
 @dataclass
@@ -50,3 +67,13 @@ class MarketSnapshot:
     tf_15m: TimeframeIndicators
     deriv: DerivativeIndicators
     market_mode: str = "range"
+
+    def get_timeframe(self, tf: str) -> TimeframeIndicators:
+        tf = tf.lower()
+        if tf in {"4h", "4hour", "tf_4h"}:
+            return self.tf_4h
+        if tf in {"1h", "1hour", "tf_1h"}:
+            return self.tf_1h
+        if tf in {"15m", "15min", "tf_15m"}:
+            return self.tf_15m
+        raise ValueError(f"Unsupported timeframe: {tf}")
