@@ -78,3 +78,45 @@ class Settings:
     debug_rsi: bool = field(
         default_factory=lambda: os.getenv("DEBUG_RSI", "").lower() in {"1", "true", "yes"}
     )
+
+    # Regime detection
+    regime: dict = field(
+        default_factory=lambda: {
+            "main_tf": "1h",
+            "trend_ma_angle_min": 0.0015,
+            "high_vol_atr_rel": 0.015,
+            "low_vol_atr_rel": 0.006,
+            "ranging_rsi_band": 12,
+            "slope_lookback": 5,
+        }
+    )
+
+    # Mean reversion strategy
+    mean_reversion: dict = field(
+        default_factory=lambda: {
+            "tf": "1h",
+            "rsi_oversold": 12,
+            "rsi_overbought": 88,
+            "atr_dev_mult": 1.2,
+            "min_oi_change_pct": 3.0,
+            "tp_to_sl_ratio": 1.5,
+            "core_position_pct": 0.5,
+            "add_position_pct": 0.25,
+            "sl_buffer_mult": 0.8,
+        }
+    )
+
+    # Liquidity hunt strategy
+    liquidity_hunt: dict = field(
+        default_factory=lambda: {
+            "tf": "1h",
+            "swing_lookback": 24,
+            "price_proximity_pct": 0.004,
+            "min_wall_mult": 3.0,
+            "min_oi_spike_pct": 5.0,
+            "post_spike_candle_count": 3,
+            "sl_buffer_pct": 0.0015,
+            "core_position_pct": 0.5,
+            "add_position_pct": 0.25,
+        }
+    )
