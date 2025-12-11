@@ -206,3 +206,18 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# local data & backtest artifacts
+data/
+backtests/
+
+# python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pkl
+
+# virtual env
+.venv/
+venv/
