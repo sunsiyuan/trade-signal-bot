@@ -50,9 +50,13 @@ class TimeframeIndicators:
     rsi6_history: List[float] = field(default_factory=list)
     recent_high: Optional[float] = None
     recent_low: Optional[float] = None
-    high_last_n: List[float] = field(default_factory=list)
-    low_last_n: List[float] = field(default_factory=list)
-    post_spike_small_body_count: int = 0
+
+    # Optional debug window extremes
+    high_last_n: Optional[float] = None
+    low_last_n: Optional[float] = None
+
+    # For LH "post OI spike small bodies" confirmation
+    post_spike_small_body_count: Optional[int] = None
 
 
 @dataclass
@@ -67,8 +71,8 @@ class DerivativeIndicators:
     liquidity_comment: str = ""     # 对流动性的简单文字判断（可选）
 
     # Orderbook 墙体辅助信息
-    ask_wall_size: Optional[float] = None
-    bid_wall_size: Optional[float] = None
+    ask_wall_size: float = 0.0
+    bid_wall_size: float = 0.0
     ask_to_bid_ratio: Optional[float] = None
     has_large_ask_wall: bool = False
     has_large_bid_wall: bool = False

@@ -47,8 +47,8 @@ def make_tf(
         rsi6_history=rsi6_history or [],
         recent_high=recent_high,
         recent_low=recent_low,
-        high_last_n=high_last_n or [],
-        low_last_n=low_last_n or [],
+        high_last_n=high_last_n,
+        low_last_n=low_last_n,
         post_spike_small_body_count=post_spike_small_body_count,
         trend_label=trend_label,
     )

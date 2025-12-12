@@ -35,8 +35,8 @@ def make_timeframe(
         volume=100,
         recent_high=recent_high,
         recent_low=recent_low,
-        high_last_n=high_last_n or [],
-        low_last_n=low_last_n or [],
+        high_last_n=high_last_n,
+        low_last_n=low_last_n,
         post_spike_small_body_count=post_spike_small_body_count,
     )
 
@@ -156,8 +156,8 @@ def test_liquidity_hunt_uses_fallback_when_oi_missing():
         recent_high=100.2,
         recent_low=99.8,
         post_spike_small_body_count=3,
-        high_last_n=[100.2],
-        low_last_n=[99.8],
+        high_last_n=100.2,
+        low_last_n=99.8,
     )
     deriv = make_deriv(
         oi_change_pct=None,
@@ -176,7 +176,7 @@ def test_liquidity_hunt_uses_fallback_when_oi_missing():
     assert signal is not None
     assert signal.confidence == 0.65
     assert signal.core_position_pct == pytest.approx(0.25)
-    assert "OI missing → fallback mode" in signal.reason
+    assert "fallback_mode=1" in signal.reason
 
 
 def test_liquidity_hunt_requires_oi_when_fallback_disabled():
@@ -189,8 +189,8 @@ def test_liquidity_hunt_requires_oi_when_fallback_disabled():
         recent_high=100.2,
         recent_low=99.8,
         post_spike_small_body_count=3,
-        high_last_n=[100.2],
-        low_last_n=[99.8],
+        high_last_n=100.2,
+        low_last_n=99.8,
     )
     snap = make_snapshot(tf, make_deriv(oi_change_pct=None, has_large_ask_wall=True))
 
@@ -213,8 +213,8 @@ def test_liquidity_hunt_triggers_with_oi_spike():
         recent_high=100.2,
         recent_low=99.8,
         post_spike_small_body_count=3,
-        high_last_n=[100.2],
-        low_last_n=[99.8],
+        high_last_n=100.2,
+        low_last_n=99.8,
     )
     deriv = make_deriv(oi_change_pct=6.0, has_large_ask_wall=True)
     snap = make_snapshot(tf, deriv)
