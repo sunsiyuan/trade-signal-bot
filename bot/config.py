@@ -109,6 +109,7 @@ class Settings:
             "allow_oi_missing_fallback": True,
             "fallback_confidence_mult": 0.75,
             "fallback_core_position_mult": 0.5,
+            "fallback_add_position_mult": 0.0,
         }
     )
 

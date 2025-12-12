@@ -50,6 +50,9 @@ def build_mean_reversion_signal(
     fallback_core_position_mult = _get_nested(
         settings, "mean_reversion", "fallback_core_position_mult", 0.5
     )
+    fallback_add_position_mult = _get_nested(
+        settings, "mean_reversion", "fallback_add_position_mult", 0.0
+    )
 
     tf = _get_tf(snap, tf_name)
     price = tf.close
@@ -80,7 +83,7 @@ def build_mean_reversion_signal(
         if fallback_mode:
             confidence *= fallback_confidence_mult
             core_pct *= fallback_core_position_mult
-            add_pct *= fallback_core_position_mult
+            add_pct *= fallback_add_position_mult
         reason = (
             f"Mean reversion long: price {price:.4f} < MA25 {ma25:.4f} - {atr_dev_mult} ATR, "
             f"RSI6={rsi6:.1f} oversold, OI_change={oi_change_pct if oi_change_pct is not None else float('nan'):.1f}% "
@@ -119,7 +122,7 @@ def build_mean_reversion_signal(
         if fallback_mode:
             confidence *= fallback_confidence_mult
             core_pct *= fallback_core_position_mult
-            add_pct *= fallback_core_position_mult
+            add_pct *= fallback_add_position_mult
         reason = (
             f"Mean reversion short: price {price:.4f} > MA25 {ma25:.4f} + {atr_dev_mult} ATR, "
             f"RSI6={rsi6:.1f} overbought, OI_change={oi_change_pct if oi_change_pct is not None else float('nan'):.1f}% "
