@@ -1,5 +1,5 @@
 """Trend-following strategy extracted from the signal engine."""
-from typing import Dict, TYPE_CHECKING
+from typing import Dict, TYPE_CHECKING, Any
 
 from .models import MarketSnapshot, Direction
 from .regime_detector import RegimeSignal
@@ -10,6 +10,54 @@ if TYPE_CHECKING:  # pragma: no cover
 
 def clamp(value: float, min_value: float = 0.0, max_value: float = 1.0) -> float:
     return max(min_value, min(max_value, value))
+
+
+def _clamp01(value: float) -> float:
+    return clamp(value, 0.0, 1.0)
+
+
+def _get_tf_setting(settings: Any, name: str, default):
+    if settings is None:
+        return default
+
+    if isinstance(settings, dict):
+        if name in settings:
+            return settings.get(name, default)
+        tf_settings = settings.get("trend_following")
+        if isinstance(tf_settings, dict):
+            return tf_settings.get(name, default)
+
+    if hasattr(settings, "trend_following"):
+        container = getattr(settings, "trend_following")
+        if isinstance(container, dict):
+            return container.get(name, default)
+        if hasattr(container, name):
+            return getattr(container, name)
+
+    if hasattr(settings, name):
+        return getattr(settings, name)
+
+    return default
+
+
+def _apply_soft_gate(
+    confidence: float,
+    core_pct: float,
+    add_pct: float,
+    high_conf: bool,
+    settings: Any,
+):
+    if high_conf:
+        confidence = _clamp01(confidence + _get_tf_setting(settings, "high_conf_bonus", 0.0))
+        core_pct *= _get_tf_setting(settings, "high_conf_core_mult", 1.0)
+        add_pct *= _get_tf_setting(settings, "high_conf_add_mult", 1.0)
+        gate_tag = "high_conf"
+    else:
+        confidence = _clamp01(confidence - _get_tf_setting(settings, "low_conf_penalty", 0.0))
+        core_pct *= _get_tf_setting(settings, "low_conf_core_mult", 1.0)
+        add_pct *= _get_tf_setting(settings, "low_conf_add_mult", 1.0)
+        gate_tag = "low_conf"
+    return confidence, core_pct, add_pct, gate_tag
 
 
 def _score_direction(snap: MarketSnapshot) -> Dict[str, float]:
@@ -121,24 +169,34 @@ def _score_direction(snap: MarketSnapshot) -> Dict[str, float]:
     }
 
 
-def _high_conf_short(snap: MarketSnapshot) -> bool:
+def _high_conf_short(snap: MarketSnapshot, settings: Any) -> bool:
     tf15 = snap.tf_15m
-    return (
-        snap.tf_4h.trend_label == "down"
-        and snap.tf_1h.trend_label != "up"
-        and tf15.rsi6 >= 80
-        and (getattr(snap.deriv, "liquidity_comment", "") or "").startswith("asks")
-    )
+    rsi_ok = tf15.rsi6 >= _get_tf_setting(settings, "rsi_extreme_short", 80)
+    trend_ok = snap.tf_4h.trend_label == "down" and snap.tf_1h.trend_label != "up"
+
+    if _get_tf_setting(settings, "require_liquidity_prefix_for_high_conf", True):
+        liquidity_ok = (getattr(snap.deriv, "liquidity_comment", "") or "").lower().startswith(
+            "asks"
+        )
+    else:
+        liquidity_ok = True
+
+    return trend_ok and rsi_ok and liquidity_ok
 
 
-def _high_conf_long(snap: MarketSnapshot) -> bool:
+def _high_conf_long(snap: MarketSnapshot, settings: Any) -> bool:
     tf15 = snap.tf_15m
-    return (
-        snap.tf_4h.trend_label == "up"
-        and snap.tf_1h.trend_label != "down"
-        and tf15.rsi6 <= 20
-        and (getattr(snap.deriv, "liquidity_comment", "") or "").startswith("bids")
-    )
+    rsi_ok = tf15.rsi6 <= _get_tf_setting(settings, "rsi_extreme_long", 20)
+    trend_ok = snap.tf_4h.trend_label == "up" and snap.tf_1h.trend_label != "down"
+
+    if _get_tf_setting(settings, "require_liquidity_prefix_for_high_conf", True):
+        liquidity_ok = (getattr(snap.deriv, "liquidity_comment", "") or "").lower().startswith(
+            "bids"
+        )
+    else:
+        liquidity_ok = True
+
+    return trend_ok and rsi_ok and liquidity_ok
 
 
 def _compute_trigger(entry: float, atr: float, direction: Direction) -> float:
@@ -174,14 +232,17 @@ def _compute_position(confidence: float, regime: str) -> Dict[str, float]:
 
 
 def build_trend_following_signal(
-    snap: MarketSnapshot, regime_signal: RegimeSignal, min_confidence: float
+    snap: MarketSnapshot,
+    regime_signal: RegimeSignal,
+    min_confidence: float,
+    settings: Any = None,
 ) -> "TradeSignal":
     scores = _score_direction(snap)
     short_score = scores["short"]
     long_score = scores["long"]
 
     bias: Direction = "short" if short_score > long_score else "long"
-    confidence = max(short_score, long_score)
+    base_confidence = max(short_score, long_score)
     trend_bias = abs(long_score - short_score)
     trend_bias_conf = clamp(trend_bias / 0.3, 0.0, 1.0)
     thresholds = {
@@ -189,6 +250,20 @@ def build_trend_following_signal(
         "regime_trade_min": 0.8,
         "trigger_atr_mult": 0.3,
     }
+    regime = regime_signal.regime
+    snap.market_mode = regime
+
+    high_conf = (
+        _high_conf_short(snap, settings)
+        if bias == "short"
+        else _high_conf_long(snap, settings)
+    )
+
+    position = _compute_position(base_confidence, regime)
+    confidence, core_pct, add_pct, gate_tag = _apply_soft_gate(
+        base_confidence, position["core"], position["add"], high_conf, settings
+    )
+    thresholds.update({"gate": gate_tag, "high_conf": high_conf})
 
     if confidence < min_confidence:
         from .signal_engine import TradeSignal
@@ -201,17 +276,20 @@ def build_trend_following_signal(
             edge_confidence=round(trend_bias_conf, 2),
             setup_type="none",
             reason=(
-                f"多空得分不足（long={long_score:.2f}, "
-                f"short={short_score:.2f}），继续观望"
+                f"信心 {confidence:.2f} 低于最小阈值，gate={gate_tag}"
+                f"（long={long_score:.2f}, short={short_score:.2f}）"
             ),
             snapshot=snap,
-            debug_scores={**scores, "trend_bias_conf": round(trend_bias_conf, 4)},
+            debug_scores={
+                **scores,
+                "trend_bias_conf": round(trend_bias_conf, 4),
+                "high_conf": high_conf,
+                "gate_tag": gate_tag,
+                "base_confidence": round(base_confidence, 4),
+            },
             rejected_reasons=["confidence_below_min"],
             thresholds_snapshot=thresholds,
         )
-
-    regime = regime_signal.regime
-    snap.market_mode = regime
 
     if regime != "trending" and confidence < 0.8:
         from .signal_engine import TradeSignal
@@ -223,44 +301,18 @@ def build_trend_following_signal(
             trade_confidence=round(confidence, 2),
             edge_confidence=round(trend_bias_conf, 2),
             setup_type="none",
-            reason=f"行情模式为 {regime}，信号强度 {confidence:.2f} 不足以出手",
+            reason=(
+                f"行情模式为 {regime}，经软加权后信号 {confidence:.2f} 不足以出手"
+            ),
             snapshot=snap,
-            debug_scores={**scores, "trend_bias_conf": round(trend_bias_conf, 4)},
+            debug_scores={
+                **scores,
+                "trend_bias_conf": round(trend_bias_conf, 4),
+                "high_conf": high_conf,
+                "gate_tag": gate_tag,
+                "base_confidence": round(base_confidence, 4),
+            },
             rejected_reasons=["regime_not_trending", "confidence_below_regime_threshold"],
-            thresholds_snapshot=thresholds,
-        )
-
-    if bias == "short" and not _high_conf_short(snap):
-        from .signal_engine import TradeSignal
-
-        return TradeSignal(
-            symbol=snap.symbol,
-            direction="none",
-            confidence=round(confidence, 2),
-            trade_confidence=round(confidence, 2),
-            edge_confidence=round(trend_bias_conf, 2),
-            setup_type="none",
-            reason="做空条件未满足高胜率模板，等待更好的 setup",
-            snapshot=snap,
-            debug_scores={**scores, "trend_bias_conf": round(trend_bias_conf, 4)},
-            rejected_reasons=["no_high_conf_short"],
-            thresholds_snapshot=thresholds,
-        )
-
-    if bias == "long" and not _high_conf_long(snap):
-        from .signal_engine import TradeSignal
-
-        return TradeSignal(
-            symbol=snap.symbol,
-            direction="none",
-            confidence=round(confidence, 2),
-            trade_confidence=round(confidence, 2),
-            edge_confidence=round(trend_bias_conf, 2),
-            setup_type="none",
-            reason="做多条件未满足高胜率模板，等待更好的 setup",
-            snapshot=snap,
-            debug_scores={**scores, "trend_bias_conf": round(trend_bias_conf, 4)},
-            rejected_reasons=["no_high_conf_long"],
             thresholds_snapshot=thresholds,
         )
 
@@ -303,8 +355,6 @@ def build_trend_following_signal(
         tp2 = entry + 1.0 * R
         tp3 = entry + 2.0 * R
 
-    position = _compute_position(confidence, regime)
-
     from .signal_engine import TradeSignal
 
     return TradeSignal(
@@ -323,10 +373,18 @@ def build_trend_following_signal(
         tp2=tp2,
         tp3=tp3,
         sl=sl,
-        core_position_pct=position["core"],
-        add_position_pct=position["add"],
+        core_position_pct=core_pct,
+        add_position_pct=add_pct,
         snapshot=snap,
-        debug_scores={**scores, "regime": regime, "trigger": trigger, "R": R},
+        debug_scores={
+            **scores,
+            "regime": regime,
+            "trigger": trigger,
+            "R": R,
+            "high_conf": high_conf,
+            "gate_tag": gate_tag,
+            "base_confidence": round(base_confidence, 4),
+        },
         rejected_reasons=[],
         thresholds_snapshot=thresholds,
     )

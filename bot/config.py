@@ -15,6 +15,9 @@ class Settings:
     # 交易标的
     symbol: str = "HYPE/USDC:USDC"
 
+    # 趋势跟随策略基础阈值
+    min_confidence: float = 0.3
+
     # 要同时跟踪的合约列表（默认为 HYPE、ETH、SOL、ZEC）
     tracked_symbols: List[str] = field(
         default_factory=lambda: [
@@ -130,5 +133,19 @@ class Settings:
             "fallback_confidence": 0.65,
             "fallback_core_position_mult": 0.5,
             "fallback_add_position_mult": 0.5,
+        }
+    )
+
+    trend_following: dict = field(
+        default_factory=lambda: {
+            "high_conf_bonus": 0.15,
+            "low_conf_penalty": 0.10,
+            "high_conf_core_mult": 1.0,
+            "low_conf_core_mult": 0.5,
+            "high_conf_add_mult": 1.0,
+            "low_conf_add_mult": 0.0,
+            "rsi_extreme_long": 25,
+            "rsi_extreme_short": 75,
+            "require_liquidity_prefix_for_high_conf": True,
         }
     )
