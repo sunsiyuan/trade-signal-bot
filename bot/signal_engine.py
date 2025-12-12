@@ -252,6 +252,13 @@ class SignalEngine:
 
     def decide(self, snap: MarketSnapshot, regime_signal: RegimeSignal) -> TradeSignal:
         regime = snap.regime
+
+        # override: if regime says trending but structure is flat, route to ranging
+        if regime in ("trending", "trend", "momentum") and (
+            abs(getattr(snap, "maangle", 0.0)) < 1e-4 or getattr(snap, "osc", 0) == 0
+        ):
+            regime = "highvolranging"
+
         if regime in ("trending", "trend", "momentum"):
             return self._decide_trend(snap, regime_signal)
         if regime in ("highvolranging", "high_vol_ranging", "ranging", "sideway"):
@@ -259,12 +266,12 @@ class SignalEngine:
         return self._decide_trend(snap, regime_signal)
 
     def _range_setup_score(self, snap: MarketSnapshot) -> Dict[str, float]:
-        abs_rsidev = abs(snap.rsidev)
-
-        edge = clamp(abs_rsidev / 3.0, 0.0, 1.0)
+        # edge proxy: distance from midline (RSI=50) on 1h
+        rsi1h = snap.rsi_1h if snap.rsi_1h is not None else snap.tf_1h.rsi6
+        abs_dev = abs(rsi1h - 50.0)
+        edge = clamp((abs_dev - 5.0) / (15.0 - 5.0), 0.0, 1.0)
 
         rsi15 = snap.rsi_15m if snap.rsi_15m is not None else snap.tf_15m.rsi6
-        rsi1h = snap.rsi_1h if snap.rsi_1h is not None else snap.tf_1h.rsi6
 
         oversold = clamp((35 - rsi15) / 15, 0.0, 1.0)
         overbought = clamp((rsi15 - 65) / 15, 0.0, 1.0)
@@ -294,6 +301,9 @@ class SignalEngine:
             "long": round(long_score, 4),
             "short": round(short_score, 4),
             "mid_penalty": round(mid_penalty, 4),
+            "abs_dev": round(abs_dev, 4),
+            "tape": round(tape, 4),
+            "ob": round(ob, 4),
         }
 
     def _decide_range(self, snap: MarketSnapshot) -> TradeSignal:
@@ -322,9 +332,9 @@ class SignalEngine:
                 symbol=snap.symbol,
                 direction="none",
                 trade_confidence=0.0,
-                edge_confidence=best,
+                edge_confidence=max(edge, best),
                 setup_type="none",
-                reason=f"Weak range edge | best={best:.2f} edge={edge:.2f}",
+                reason=f"Range watch | best={best:.2f} edge={edge:.2f}",
                 snapshot=snap,
                 debug_scores=scores,
             )
@@ -362,6 +372,8 @@ class SignalEngine:
 
         bias: Direction = "short" if short_score > long_score else "long"
         confidence = max(short_score, long_score)
+        trend_bias = abs(long_score - short_score)
+        trend_bias_conf = clamp(trend_bias / 0.3, 0.0, 1.0)
 
         if confidence < self.min_confidence:
             return TradeSignal(
@@ -369,13 +381,14 @@ class SignalEngine:
                 direction="none",
                 confidence=round(confidence, 2),
                 trade_confidence=round(confidence, 2),
+                edge_confidence=round(trend_bias_conf, 2),
                 setup_type="none",
                 reason=(
                     f"多空得分不足（long={long_score:.2f}, "
                     f"short={short_score:.2f}），继续观望"
                 ),
                 snapshot=snap,
-                debug_scores=scores,
+                debug_scores={**scores, "trend_bias_conf": round(trend_bias_conf, 4)},
             )
 
         regime = regime_signal.regime
@@ -387,10 +400,11 @@ class SignalEngine:
                 direction="none",
                 confidence=round(confidence, 2),
                 trade_confidence=round(confidence, 2),
+                edge_confidence=round(trend_bias_conf, 2),
                 setup_type="none",
                 reason=f"行情模式为 {regime}，信号强度 {confidence:.2f} 不足以出手",
                 snapshot=snap,
-                debug_scores=scores,
+                debug_scores={**scores, "trend_bias_conf": round(trend_bias_conf, 4)},
             )
 
         if bias == "short" and not self._high_conf_short(snap):
@@ -399,10 +413,11 @@ class SignalEngine:
                 direction="none",
                 confidence=round(confidence, 2),
                 trade_confidence=round(confidence, 2),
+                edge_confidence=round(trend_bias_conf, 2),
                 setup_type="none",
                 reason="做空条件未满足高胜率模板，等待更好的 setup",
                 snapshot=snap,
-                debug_scores=scores,
+                debug_scores={**scores, "trend_bias_conf": round(trend_bias_conf, 4)},
             )
 
         if bias == "long" and not self._high_conf_long(snap):
@@ -411,10 +426,11 @@ class SignalEngine:
                 direction="none",
                 confidence=round(confidence, 2),
                 trade_confidence=round(confidence, 2),
+                edge_confidence=round(trend_bias_conf, 2),
                 setup_type="none",
                 reason="做多条件未满足高胜率模板，等待更好的 setup",
                 snapshot=snap,
-                debug_scores=scores,
+                debug_scores={**scores, "trend_bias_conf": round(trend_bias_conf, 4)},
             )
 
         tf15 = snap.tf_15m
@@ -429,13 +445,14 @@ class SignalEngine:
                 direction="none",
                 confidence=round(confidence, 2),
                 trade_confidence=round(confidence, 2),
+                edge_confidence=round(trend_bias_conf, 2),
                 setup_type="none",
                 reason=(
                     f"信号待确认：等待价格触发 {trigger:.2f} 以执行 {bias} 入场"
                 ),
                 entry=trigger,
                 snapshot=snap,
-                debug_scores=scores,
+                debug_scores={**scores, "trend_bias_conf": round(trend_bias_conf, 4)},
             )
 
         entry = trigger

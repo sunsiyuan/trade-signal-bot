@@ -104,9 +104,9 @@ def test_ranging_mid_zone_stays_sidelines_with_edge_confidence():
         ma7=100,
         ma25=100,
         ma99=100,
-        rsi6=50,
-        rsi12=48,
-        rsi24=47,
+        rsi6=57,
+        rsi12=52,
+        rsi24=50,
         macd=0.0,
         macd_signal=0.0,
         macd_hist=0.0,
@@ -180,9 +180,9 @@ def test_range_edge_long_signal_emerges():
         ma7=100,
         ma25=100,
         ma99=100,
-        rsi6=40,
-        rsi12=42,
-        rsi24=45,
+        rsi6=30,
+        rsi12=35,
+        rsi24=40,
         macd=-0.2,
         macd_signal=-0.1,
         macd_hist=-0.1,
@@ -296,6 +296,8 @@ def test_trending_flow_still_uses_trend_logic():
         tf_15m=tf15,
         deriv=deriv,
     )
+    snap.maangle = 0.1
+    snap.osc = 1
 
     engine = SignalEngine(Settings())
     signal = engine.generate_signal(snap)
