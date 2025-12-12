@@ -116,12 +116,18 @@ class SignalEngine:
 
         if regime == "trending":
             return build_trend_following_signal(
-                snap, regime_signal, min_confidence=self.min_confidence
+                snap,
+                regime_signal,
+                min_confidence=self.min_confidence,
+                settings=self.settings,
             )
         if regime in ("high_vol_ranging", "low_vol_ranging"):
             return self._decide_range(snap)
         return build_trend_following_signal(
-            snap, regime_signal, min_confidence=self.min_confidence
+            snap,
+            regime_signal,
+            min_confidence=self.min_confidence,
+            settings=self.settings,
         )
 
     def _range_setup_score(self, snap: MarketSnapshot) -> Dict[str, float]:
