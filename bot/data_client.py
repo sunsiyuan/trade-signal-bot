@@ -84,6 +84,53 @@ class HyperliquidDataClient:
         }
         return self._normalize_symbol(candidate_symbol) in target_symbols
 
+    def _compute_orderbook_walls(
+        self, orderbook_asks: List[Dict], orderbook_bids: List[Dict]
+    ):
+        lh_cfg = getattr(self.settings, "liquidity_hunt", {})
+        wall_depth_bps = float(lh_cfg.get("wall_depth_bps", 30))
+        wall_size_threshold = float(lh_cfg.get("wall_size_threshold", 3.0))
+
+        if not orderbook_asks or not orderbook_bids:
+            return 0.0, 0.0, False, False
+
+        try:
+            best_ask = float(orderbook_asks[0]["price"])
+            best_bid = float(orderbook_bids[0]["price"])
+        except (KeyError, TypeError, ValueError):
+            return 0.0, 0.0, False, False
+
+        mid_price = (best_ask + best_bid) / 2 if best_ask and best_bid else None
+        if not mid_price or mid_price <= 0:
+            return 0.0, 0.0, False, False
+
+        depth_ratio = wall_depth_bps / 10000.0
+
+        def _in_depth(price: float, side: str) -> bool:
+            if side == "ask":
+                return price >= mid_price and (price - mid_price) / mid_price <= depth_ratio
+            return price <= mid_price and (mid_price - price) / mid_price <= depth_ratio
+
+        ask_wall_size = sum(
+            float(ask.get("size", 0))
+            for ask in orderbook_asks
+            if _in_depth(float(ask.get("price", 0)), "ask")
+        )
+        bid_wall_size = sum(
+            float(bid.get("size", 0))
+            for bid in orderbook_bids
+            if _in_depth(float(bid.get("price", 0)), "bid")
+        )
+
+        has_large_ask_wall = ask_wall_size >= wall_size_threshold * max(
+            bid_wall_size, 1e-6
+        )
+        has_large_bid_wall = bid_wall_size >= wall_size_threshold * max(
+            ask_wall_size, 1e-6
+        )
+
+        return ask_wall_size, bid_wall_size, has_large_ask_wall, has_large_bid_wall
+
     def _extract_funding(self, entry: Dict) -> Optional[float]:
         if not isinstance(entry, dict):
             return None
@@ -268,6 +315,17 @@ class HyperliquidDataClient:
             b["size"] for b in orderbook_bids
         ) else "bids>=asks"
 
+        (
+            ask_wall_size,
+            bid_wall_size,
+            has_large_ask_wall,
+            has_large_bid_wall,
+        ) = self._compute_orderbook_walls(orderbook_asks, orderbook_bids)
+
+        ask_to_bid_ratio = None
+        if bid_wall_size > 0:
+            ask_to_bid_ratio = ask_wall_size / bid_wall_size
+
         return DerivativeIndicators(
             funding=funding,
             open_interest=open_interest,
@@ -275,6 +333,11 @@ class HyperliquidDataClient:
             orderbook_asks=orderbook_asks,
             orderbook_bids=orderbook_bids,
             liquidity_comment=liquidity_comment,
+            ask_wall_size=ask_wall_size,
+            bid_wall_size=bid_wall_size,
+            ask_to_bid_ratio=ask_to_bid_ratio,
+            has_large_ask_wall=has_large_ask_wall,
+            has_large_bid_wall=has_large_bid_wall,
         )
 
     def _build_tf_indicators(self, df: pd.DataFrame, timeframe: str) -> TimeframeIndicators:
@@ -319,6 +382,40 @@ class HyperliquidDataClient:
 
         slope_lookback = int(self.settings.regime.get("slope_lookback", 5))
         hist_len = max(20, slope_lookback * 4)
+
+        lh_cfg = getattr(self.settings, "liquidity_hunt", {})
+
+        lookback = int(lh_cfg.get("swing_lookback_bars", 50))
+        exclude = int(lh_cfg.get("swing_exclude_last", 1))
+        window_df = None
+        if len(df) > lookback + exclude:
+            window_df = df.iloc[-(lookback + exclude) : -exclude]
+        elif exclude > 0:
+            window_df = df.iloc[:-exclude]
+        else:
+            window_df = df
+
+        recent_high = None
+        recent_low = None
+        high_last_n = None
+        low_last_n = None
+        if window_df is not None and len(window_df) >= 5:
+            recent_high = float(window_df["high"].max())
+            recent_low = float(window_df["low"].min())
+            high_last_n = recent_high
+            low_last_n = recent_low
+
+        small_body_lookback = int(lh_cfg.get("small_body_lookback", 8))
+        small_body_mult = float(lh_cfg.get("small_body_atr_mult", 0.35))
+
+        tail = df.iloc[-small_body_lookback:] if len(df) >= small_body_lookback else df
+        post_spike_small_body_count = None
+        if len(tail) >= 3:
+            body = (tail["close"] - tail["open"]).abs()
+            atr_tail = atr_series.iloc[-len(tail) :].abs()
+            if len(atr_tail) == len(tail):
+                small_body = body <= (atr_tail * small_body_mult)
+                post_spike_small_body_count = int(small_body.sum())
 
         timeframe_delta = pd.to_timedelta(timeframe)
         timestamps = df["timestamp"].dt.tz_convert(timezone.utc)
@@ -399,6 +496,11 @@ class HyperliquidDataClient:
             return_last=return_last,
             atr_rel=float(atr_series.iloc[-1]) / max(price_last, 1e-9),
             tr_last=tr_last,
+            recent_high=recent_high,
+            recent_low=recent_low,
+            high_last_n=high_last_n,
+            low_last_n=low_last_n,
+            post_spike_small_body_count=post_spike_small_body_count,
         )
 
     def build_market_snapshot(self) -> MarketSnapshot:

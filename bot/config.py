@@ -121,9 +121,15 @@ class Settings:
         default_factory=lambda: {
             "tf": "1h",
             "swing_lookback": 24,
+            "swing_lookback_bars": 50,
+            "swing_exclude_last": 1,
             "price_proximity_pct": 0.004,
             "min_wall_mult": 3.0,
             "min_oi_spike_pct": 5.0,
+            "small_body_atr_mult": 0.35,
+            "small_body_lookback": 8,
+            "wall_depth_bps": 30,
+            "wall_size_threshold": 3.0,
             "post_spike_candle_count": 3,
             "sl_buffer_pct": 0.0015,
             "core_position_pct": 0.5,
@@ -133,6 +139,10 @@ class Settings:
             "fallback_confidence": 0.65,
             "fallback_core_position_mult": 0.5,
             "fallback_add_position_mult": 0.5,
+            "allow_fallback_when_missing": True,
+            "missing_fallback_confidence": 0.35,
+            "missing_fallback_core_mult": 0.5,
+            "missing_fallback_add_mult": 0.0,
         }
     )
 
