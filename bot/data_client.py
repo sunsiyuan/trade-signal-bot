@@ -317,10 +317,58 @@ class HyperliquidDataClient:
 
         trend_label = detect_trend(close, ma7, ma25, ma99)
 
-        last = df.index[-1]
+        timeframe_delta = pd.to_timedelta(timeframe)
+        timestamps = df["timestamp"].dt.tz_convert(timezone.utc)
+
+        last_open = timestamps.iloc[-1].to_pydatetime()
+        last_close = last_open + timeframe_delta
+        now = datetime.now(timezone.utc)
+
+        expected_delta = timeframe_delta
+        missing_bars = 0
+        gap_list = []
+        if len(timestamps) > 1:
+            for prev, curr in zip(timestamps.iloc[:-1], timestamps.iloc[1:]):
+                gap = curr - prev
+                gap_units = gap.total_seconds() / expected_delta.total_seconds()
+                if gap_units > 1.01:
+                    missing = int(round(gap_units - 1))
+                    missing_bars += missing
+                    gap_list.append(
+                        {
+                            "start_utc": (prev + expected_delta).isoformat(),
+                            "end_utc": (curr - expected_delta).isoformat(),
+                            "missing": missing,
+                        }
+                    )
+
+        high_last = float(df["high"].iloc[-1])
+        low_last = float(df["low"].iloc[-1])
+        price_last = float(close.iloc[-1])
+        price_mid = (high_last + low_last) / 2
+        typical_price = (high_last + low_last + price_last) / 3
+        prev_close = float(close.iloc[-2]) if len(close) > 1 else None
+        return_last = None
+        if prev_close and prev_close != 0:
+            return_last = (price_last - prev_close) / prev_close
+
+        tr_last = None
+        if prev_close is not None:
+            tr1 = high_last - low_last
+            tr2 = abs(high_last - prev_close)
+            tr3 = abs(low_last - prev_close)
+            tr_last = max(tr1, tr2, tr3)
+
+        lookback_window = max(
+            99,
+            s.macd_slow + s.macd_signal,
+            s.rsi_slow + 1,
+            s.atr_period,
+        )
+
         return TimeframeIndicators(
             timeframe=timeframe,
-            close=float(close.iloc[-1]),
+            close=price_last,
             ma7=float(ma7.iloc[-1]),
             ma25=float(ma25.iloc[-1]),
             ma99=float(ma99.iloc[-1]),
@@ -333,6 +381,19 @@ class HyperliquidDataClient:
             atr=float(atr_series.iloc[-1]),
             volume=float(df["volume"].iloc[-1]),
             trend_label=trend_label,
+            last_candle_open_utc=last_open,
+            last_candle_close_utc=last_close,
+            is_last_candle_closed=now >= last_close,
+            bars_used=len(df),
+            lookback_window=lookback_window,
+            missing_bars_count=missing_bars,
+            gap_list=gap_list,
+            price_last=price_last,
+            price_mid=price_mid,
+            typical_price=typical_price,
+            return_last=return_last,
+            atr_rel=float(atr_series.iloc[-1]) / max(price_last, 1e-9),
+            tr_last=tr_last,
         )
 
     def build_market_snapshot(self) -> MarketSnapshot:

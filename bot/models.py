@@ -28,6 +28,23 @@ class TimeframeIndicators:
 
     trend_label: str = "range"  # "up" / "down" / "range"
 
+    # 数据质量与窗口信息
+    last_candle_open_utc: Optional[datetime] = None
+    last_candle_close_utc: Optional[datetime] = None
+    is_last_candle_closed: bool = True
+    bars_used: int = 0
+    lookback_window: int = 0
+    missing_bars_count: int = 0
+    gap_list: List[Dict] = field(default_factory=list)
+
+    # 价格基准与波动（量纲校验）
+    price_last: Optional[float] = None
+    price_mid: Optional[float] = None
+    typical_price: Optional[float] = None
+    return_last: Optional[float] = None
+    atr_rel: Optional[float] = None
+    tr_last: Optional[float] = None
+
     # 历史与形态辅助
     ma25_history: List[float] = field(default_factory=list)
     rsi6_history: List[float] = field(default_factory=list)
