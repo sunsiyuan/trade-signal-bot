@@ -72,6 +72,20 @@ class Settings:
     telegram_chat_id: Optional[str] = field(
         default_factory=lambda: os.getenv("TELEGRAM_CHAT_ID")
     )
+    telegram_action_token: Optional[str] = field(
+        default_factory=lambda: os.getenv("TELEGRAM_ACTION_BOT_TOKEN")
+    )
+    telegram_action_chat_id: Optional[str] = field(
+        default_factory=lambda: os.getenv("TELEGRAM_ACTION_CHAT_ID")
+    )
+    telegram_summary_token: Optional[str] = field(
+        default_factory=lambda: os.getenv("TELEGRAM_SUMMARY_BOT_TOKEN")
+        or os.getenv("TELEGRAM_BOT_TOKEN")
+    )
+    telegram_summary_chat_id: Optional[str] = field(
+        default_factory=lambda: os.getenv("TELEGRAM_SUMMARY_CHAT_ID")
+        or os.getenv("TELEGRAM_CHAT_ID")
+    )
     ftqq_key: Optional[str] = field(default_factory=lambda: os.getenv("FTQQ_KEY"))
     webhook_url: Optional[str] = field(
         default_factory=lambda: os.getenv("WEBHOOK_URL")
@@ -157,5 +171,15 @@ class Settings:
             "rsi_extreme_long": 25,
             "rsi_extreme_short": 75,
             "require_liquidity_prefix_for_high_conf": True,
+        }
+    )
+
+    # Notification thresholds
+    notification: dict = field(
+        default_factory=lambda: {
+            "execute_trade_conf": 0.75,
+            "watch_trade_conf": 0.55,
+            "watch_edge_conf": 0.80,
+            "near_miss_delta": 0.05,
         }
     )
