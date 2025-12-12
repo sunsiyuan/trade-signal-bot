@@ -317,6 +317,9 @@ class HyperliquidDataClient:
 
         trend_label = detect_trend(close, ma7, ma25, ma99)
 
+        slope_lookback = int(self.settings.regime.get("slope_lookback", 5))
+        hist_len = max(20, slope_lookback * 4)
+
         timeframe_delta = pd.to_timedelta(timeframe)
         timestamps = df["timestamp"].dt.tz_convert(timezone.utc)
 
@@ -372,7 +375,9 @@ class HyperliquidDataClient:
             ma7=float(ma7.iloc[-1]),
             ma25=float(ma25.iloc[-1]),
             ma99=float(ma99.iloc[-1]),
+            ma25_history=[float(x) for x in ma25.tail(hist_len).tolist()],
             rsi6=rsi6_value,
+            rsi6_history=[float(x) for x in rsi6_series.tail(hist_len).tolist()],
             rsi12=rsi12_value,
             rsi24=rsi24_value,
             macd=float(macd_line.iloc[-1]),

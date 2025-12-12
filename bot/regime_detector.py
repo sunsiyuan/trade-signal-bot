@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Literal, Optional
+from dataclasses import dataclass, field
+from typing import List, Literal, Optional
 
 from .models import MarketSnapshot
 
@@ -15,6 +15,8 @@ class RegimeSignal:
     atr_rel: float
     rsi_avg_dev: float
     osc_count: int
+    degraded: bool = False
+    missing_fields: List[str] = field(default_factory=list)
 
 
 def _get_nested(settings, group: str, key: str, default):
@@ -40,25 +42,46 @@ def detect_regime(snap: MarketSnapshot, settings) -> RegimeSignal:
     slope_lookback = _get_nested(settings, "regime", "slope_lookback", 5)
 
     tf = snap.get_timeframe(main_tf)
-    ma_history = tf.ma25_history
-    rsi_history = tf.rsi6_history
+    missing: List[str] = []
+    degraded = False
 
-    if ma_history and len(ma_history) > slope_lookback:
-        ma_angle = (tf.ma25 - ma_history[-slope_lookback]) / max(
-            slope_lookback * max(tf.close, 1e-6), 1e-6
-        )
-    else:
+    ma_history = getattr(tf, "ma25_history", None) or []
+    rsi_history = getattr(tf, "rsi6_history", None) or []
+
+    if len(ma_history) < 2:
+        degraded = True
+        missing.append("ma25_history")
         ma_angle = 0.0
+    else:
+        if len(ma_history) > slope_lookback:
+            base = ma_history[-slope_lookback]
+            ma_angle = (ma_history[-1] - base) / max(abs(base), 1e-9)
+        else:
+            base = ma_history[0]
+            ma_angle = (ma_history[-1] - base) / max(abs(base), 1e-9)
 
     atr_rel = tf.atr / max(tf.close, 1e-6)
 
     if rsi_history:
         deviations = [abs(v - 50) for v in rsi_history[-slope_lookback:]]
         rsi_avg_dev = sum(deviations) / max(len(deviations), 1)
-        osc_count = sum(1 for i in range(1, len(rsi_history)) if (rsi_history[i - 1] - 50) * (rsi_history[i] - 50) < 0)
     else:
+        degraded = True
+        if "rsi6_history" not in missing:
+            missing.append("rsi6_history")
         rsi_avg_dev = abs(tf.rsi6 - 50)
+
+    if len(rsi_history) < 3:
+        degraded = True
+        if "rsi6_history" not in missing:
+            missing.append("rsi6_history")
         osc_count = 0
+    else:
+        osc_count = sum(
+            1
+            for i in range(1, len(rsi_history))
+            if (rsi_history[i - 1] - 50) * (rsi_history[i] - 50) < 0
+        )
 
     if abs(ma_angle) >= trend_ma_angle_min:
         regime: Regime = "trending"
@@ -77,9 +100,10 @@ def detect_regime(snap: MarketSnapshot, settings) -> RegimeSignal:
     if rsi_avg_dev >= rsi_band * 1.5 and osc_count <= 1 and regime != "trending":
         regime = "trending"
 
+    dq = "" if not degraded else f" degraded=1 missing={','.join(missing)}"
     reason = (
         f"tf={main_tf} ma_angle={ma_angle:.4f} atr_rel={atr_rel:.4f} "
-        f"rsi_avg_dev={rsi_avg_dev:.2f} osc_count={osc_count}"
+        f"rsi_avg_dev={rsi_avg_dev:.2f} osc_count={osc_count}{dq}"
     )
 
     return RegimeSignal(
@@ -89,4 +113,6 @@ def detect_regime(snap: MarketSnapshot, settings) -> RegimeSignal:
         atr_rel=atr_rel,
         rsi_avg_dev=rsi_avg_dev,
         osc_count=osc_count,
+        degraded=degraded,
+        missing_fields=missing,
     )
