@@ -69,19 +69,21 @@ class SignalEngine:
         return default
 
     def decide(self, snap: MarketSnapshot, regime_signal: RegimeSignal) -> TradeSignal:
-        regime = snap.regime
+        regime = regime_signal.regime
 
         # override: if regime says trending but structure is flat, route to ranging
-        if regime in ("trending", "trend", "momentum") and (
+        if regime == "trending" and (
             abs(getattr(snap, "maangle", 0.0)) < 1e-4 or getattr(snap, "osc", 0) == 0
         ):
-            regime = "highvolranging"
+            regime = "high_vol_ranging"
 
-        if regime in ("trending", "trend", "momentum"):
+        snap.regime = regime
+
+        if regime == "trending":
             return build_trend_following_signal(
                 snap, regime_signal, min_confidence=self.min_confidence
             )
-        if regime in ("highvolranging", "high_vol_ranging", "ranging", "sideway"):
+        if regime in ("high_vol_ranging", "low_vol_ranging"):
             return self._decide_range(snap)
         return build_trend_following_signal(
             snap, regime_signal, min_confidence=self.min_confidence
@@ -207,7 +209,7 @@ class SignalEngine:
             reason_prefix = (
                 "range"
                 if "range" in (signal.setup_type or "") or "range" in snap.regime
-                else "trend"
+                else "trending"
             )
             signal.reason = (
                 f"[{reason_prefix}] {signal.reason} | regime={snap.regime} | {regime_signal.reason}"

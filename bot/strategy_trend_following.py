@@ -161,7 +161,7 @@ def _compute_swing_sl(snap: MarketSnapshot, atr: float, direction: Direction) ->
 
 
 def _compute_position(confidence: float, regime: str) -> Dict[str, float]:
-    if regime == "range":
+    if regime in ("high_vol_ranging", "low_vol_ranging"):
         if confidence >= 0.8:
             return {"core": 0.2, "add": 0.1}
         return {"core": 0.0, "add": 0.0}
