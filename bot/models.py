@@ -67,6 +67,14 @@ class MarketSnapshot:
     tf_15m: TimeframeIndicators
     deriv: DerivativeIndicators
     market_mode: str = "range"
+    regime: str = "unknown"
+    regime_reason: str = ""
+    rsidev: float = 0.0
+    atrrel: float = 0.0
+    rsi_15m: Optional[float] = None
+    rsi_1h: Optional[float] = None
+    asks: float = 0.0
+    bids: float = 0.0
 
     def get_timeframe(self, tf: str) -> TimeframeIndicators:
         tf = tf.lower()

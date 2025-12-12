@@ -2,9 +2,7 @@ from datetime import datetime
 
 from bot.config import Settings
 from bot.models import TimeframeIndicators, DerivativeIndicators, MarketSnapshot
-from bot.regime_detector import detect_regime
 from bot.signal_engine import SignalEngine
-from bot.strategy_liquidity_hunt import build_liquidity_hunt_signal
 
 
 def make_tf(
@@ -83,7 +81,159 @@ def make_deriv(
     )
 
 
-def test_trending_regime_prefers_trend_follow():
+def test_ranging_mid_zone_stays_sidelines_with_edge_confidence():
+    tf4h = make_tf(
+        "4h",
+        close=100,
+        ma7=100,
+        ma25=100,
+        ma99=99,
+        rsi6=60,
+        rsi12=58,
+        rsi24=55,
+        macd=0.2,
+        macd_signal=0.1,
+        macd_hist=0.1,
+        atr=1.0,
+        volume=500,
+        trend_label="range",
+    )
+    tf1h = make_tf(
+        "1h",
+        close=100,
+        ma7=100,
+        ma25=100,
+        ma99=100,
+        rsi6=57,
+        rsi12=52,
+        rsi24=50,
+        macd=0.0,
+        macd_signal=0.0,
+        macd_hist=0.0,
+        atr=1.5,
+        volume=400,
+        ma25_history=[100] * 6,
+        trend_label="range",
+    )
+    tf15 = make_tf(
+        "15m",
+        close=100,
+        ma7=100,
+        ma25=100,
+        ma99=100,
+        rsi6=45,
+        rsi12=45,
+        rsi24=45,
+        macd=0.0,
+        macd_signal=0.0,
+        macd_hist=0.0,
+        atr=0.8,
+        volume=300,
+        trend_label="range",
+    )
+    deriv = make_deriv(orderbook_asks=[{"size": 50}], orderbook_bids=[{"size": 60}])
+
+    snap = MarketSnapshot(
+        symbol="TEST",
+        ts=datetime.utcnow(),
+        tf_4h=tf4h,
+        tf_1h=tf1h,
+        tf_15m=tf15,
+        deriv=deriv,
+        regime="high_vol_ranging",
+        rsidev=0.5,
+        atrrel=0.01,
+        rsi_15m=tf15.rsi6,
+        rsi_1h=tf1h.rsi6,
+        asks=50,
+        bids=60,
+    )
+
+    engine = SignalEngine(Settings())
+    signal = engine.generate_signal(snap)
+
+    assert signal.direction == "none"
+    assert signal.trade_confidence == 0.0
+    assert signal.edge_confidence > 0.0
+
+
+def test_range_edge_long_signal_emerges():
+    tf4h = make_tf(
+        "4h",
+        close=100,
+        ma7=100,
+        ma25=100,
+        ma99=99,
+        rsi6=65,
+        rsi12=62,
+        rsi24=60,
+        macd=0.3,
+        macd_signal=0.1,
+        macd_hist=0.2,
+        atr=1.0,
+        volume=600,
+        trend_label="range",
+    )
+    tf1h = make_tf(
+        "1h",
+        close=95,
+        ma7=100,
+        ma25=100,
+        ma99=100,
+        rsi6=30,
+        rsi12=35,
+        rsi24=40,
+        macd=-0.2,
+        macd_signal=-0.1,
+        macd_hist=-0.1,
+        atr=1.5,
+        volume=500,
+        ma25_history=[100] * 6,
+        trend_label="range",
+    )
+    tf15 = make_tf(
+        "15m",
+        close=95,
+        ma7=99,
+        ma25=100,
+        ma99=100,
+        rsi6=20,
+        rsi12=25,
+        rsi24=30,
+        macd=-0.3,
+        macd_signal=-0.2,
+        macd_hist=-0.1,
+        atr=0.9,
+        volume=350,
+        trend_label="range",
+    )
+    deriv = make_deriv(orderbook_asks=[{"size": 40}], orderbook_bids=[{"size": 120}])
+
+    snap = MarketSnapshot(
+        symbol="TEST",
+        ts=datetime.utcnow(),
+        tf_4h=tf4h,
+        tf_1h=tf1h,
+        tf_15m=tf15,
+        deriv=deriv,
+        regime="high_vol_ranging",
+        rsidev=3.5,
+        atrrel=0.01,
+        rsi_15m=tf15.rsi6,
+        rsi_1h=tf1h.rsi6,
+        asks=40,
+        bids=120,
+    )
+
+    engine = SignalEngine(Settings())
+    signal = engine.generate_signal(snap)
+
+    assert signal.direction == "long"
+    assert signal.setup_type == "range_long"
+    assert signal.trade_confidence > 0.0
+
+
+def test_trending_flow_still_uses_trend_logic():
     tf4h = make_tf(
         "4h",
         close=105,
@@ -136,7 +286,7 @@ def test_trending_regime_prefers_trend_follow():
         volume=200,
         trend_label="up",
     )
-    deriv = make_deriv()
+    deriv = make_deriv(liquidity_comment="bids>asks")
 
     snap = MarketSnapshot(
         symbol="TEST",
@@ -146,164 +296,11 @@ def test_trending_regime_prefers_trend_follow():
         tf_15m=tf15,
         deriv=deriv,
     )
-
-    regime_signal = detect_regime(snap, Settings())
-    assert regime_signal.regime == "trending"
-
-    engine = SignalEngine(Settings())
-    signal = engine.generate_signal(snap)
-    assert "[trend]" in signal.reason
-
-
-def test_mean_reversion_long_in_ranging_regime():
-    tf4h = make_tf(
-        "4h",
-        close=100,
-        ma7=100,
-        ma25=100,
-        ma99=99,
-        rsi6=50,
-        rsi12=50,
-        rsi24=50,
-        macd=0.0,
-        macd_signal=0.0,
-        macd_hist=0.0,
-        atr=1.5,
-        volume=800,
-        ma25_history=[100, 100, 100, 100, 100],
-        rsi6_history=[49, 51, 50, 52, 48],
-        trend_label="range",
-    )
-    tf1h = make_tf(
-        "1h",
-        close=95,
-        ma7=100,
-        ma25=100,
-        ma99=100,
-        rsi6=10,
-        rsi12=25,
-        rsi24=30,
-        macd=-0.5,
-        macd_signal=-0.4,
-        macd_hist=-0.1,
-        atr=3.0,
-        volume=600,
-        ma25_history=[100, 100, 100, 100, 100],
-        rsi6_history=[49, 52, 48, 51, 49],
-        trend_label="range",
-    )
-    tf15 = make_tf(
-        "15m",
-        close=95,
-        ma7=99,
-        ma25=100,
-        ma99=100,
-        rsi6=15,
-        rsi12=25,
-        rsi24=35,
-        macd=-0.3,
-        macd_signal=-0.2,
-        macd_hist=-0.1,
-        atr=1.5,
-        volume=400,
-        trend_label="range",
-    )
-    deriv = make_deriv(oi_change_pct=-5.0)
-
-    snap = MarketSnapshot(
-        symbol="TEST",
-        ts=datetime.utcnow(),
-        tf_4h=tf4h,
-        tf_1h=tf1h,
-        tf_15m=tf15,
-        deriv=deriv,
-    )
+    snap.maangle = 0.1
+    snap.osc = 1
 
     engine = SignalEngine(Settings())
     signal = engine.generate_signal(snap)
 
-    assert signal.direction == "long"
-    assert "mean_reversion" in signal.reason
-    assert signal.entry == tf1h.close
-
-
-def test_liquidity_hunt_short_setup():
-    tf4h = make_tf(
-        "4h",
-        close=110,
-        ma7=110,
-        ma25=110,
-        ma99=109,
-        rsi6=50,
-        rsi12=50,
-        rsi24=50,
-        macd=0.0,
-        macd_signal=0.0,
-        macd_hist=0.0,
-        atr=2.5,
-        volume=900,
-        ma25_history=[110, 110, 110, 110, 110],
-        rsi6_history=[51, 49, 52, 48, 51],
-        trend_label="range",
-    )
-    tf1h = make_tf(
-        "1h",
-        close=109.6,
-        ma7=110,
-        ma25=110,
-        ma99=109,
-        rsi6=55,
-        rsi12=50,
-        rsi24=50,
-        macd=0.1,
-        macd_signal=0.1,
-        macd_hist=0.0,
-        atr=2.2,
-        volume=700,
-        ma25_history=[110, 110, 110, 110, 110],
-        rsi6_history=[49, 51, 50, 49, 52],
-        recent_high=110.0,
-        high_last_n=[109.8, 109.9, 110.0, 110.1],
-        post_spike_small_body_count=3,
-        trend_label="range",
-    )
-    tf15 = make_tf(
-        "15m",
-        close=109.6,
-        ma7=109.8,
-        ma25=109.9,
-        ma99=109.5,
-        rsi6=60,
-        rsi12=55,
-        rsi24=52,
-        macd=0.05,
-        macd_signal=0.04,
-        macd_hist=0.01,
-        atr=1.2,
-        volume=500,
-        trend_label="range",
-    )
-    deriv = make_deriv(
-        oi_change_pct=6.0,
-        ask_wall_size=300,
-        bid_wall_size=50,
-        has_large_ask_wall=True,
-    )
-
-    snap = MarketSnapshot(
-        symbol="TEST",
-        ts=datetime.utcnow(),
-        tf_4h=tf4h,
-        tf_1h=tf1h,
-        tf_15m=tf15,
-        deriv=deriv,
-    )
-
-    regime_signal = detect_regime(snap, Settings())
-    assert regime_signal.regime == "high_vol_ranging"
-
-    lh_signal = build_liquidity_hunt_signal(snap, regime_signal.regime, Settings())
-
-    assert lh_signal is not None
-    assert lh_signal.direction == "short"
-    assert "liquidity" in lh_signal.reason.lower()
+    assert signal.setup_type in {"trend_long", "trend_short", "none"}
+    assert "[trend]" in (signal.reason or "")

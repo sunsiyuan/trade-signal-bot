@@ -59,7 +59,9 @@ def format_signal_brief(signal):
     trend_emoji, trend_text = _trend_icon(snap.tf_4h.trend_label)
     price = snap.tf_15m.close
     direction_text = _direction_text(signal.direction)
-    confidence_pct = int(signal.confidence * 100)
+    trade_conf = signal.trade_confidence or signal.confidence
+    confidence_pct = int(trade_conf * 100)
+    edge_pct = int((signal.edge_confidence or 0.0) * 100)
     rsi_4h = snap.tf_4h.rsi6
     oi = snap.deriv.open_interest
 
@@ -68,7 +70,8 @@ def format_signal_brief(signal):
         f"💰 {price:>8.4f} | "
         f"{trend_emoji} {trend_text:7} | "
         f"{_decision_icon(signal.direction)} {direction_text:<10} | "
-        f"信心 {confidence_pct:>2d}% | "
+        f"TradeConf {confidence_pct:>2d}% | "
+        f"EdgeConf {edge_pct:>2d}% | "
         f"4H RSI {rsi_4h:>5.1f} | "
         f"OI {oi:>10,.0f}"
     )
@@ -79,6 +82,8 @@ def format_signal_detail(signal):
     if not snap:
         return f"{signal.symbol}: snapshot unavailable"
 
+    trade_conf = signal.trade_confidence or signal.confidence
+    edge_conf = signal.edge_confidence if hasattr(signal, "edge_confidence") else 0.0
     trend_emoji, _ = _trend_icon(snap.tf_4h.trend_label)
     decision_map = {
         "long": ("✅ 准备做多", "多头 setup 出现，可以找入场点"),
@@ -114,12 +119,13 @@ def format_signal_detail(signal):
         f"📌 {signal.symbol} — Trade Signal",
         f"⏱ {beijing_ts.strftime('%Y-%m-%d %H:%M')} (UTC+8)",
         f"💰 Price: {snap.tf_15m.close:.4f}",
-        f"{trend_emoji} | {decision_title} | 信心 {int(signal.confidence * 100)}%",
+        f"{trend_emoji} | {decision_title} | 信心 {int(trade_conf * 100)}%",
         "",
         "🏁 Summary",
         f"• 核心结论：{decision_title}（{_direction_sentence(signal.direction)})",
         f"• 执行建议：{decision_explain}",
         f"• 主要原因：{human_reason}",
+        f"• Edge confidence: {int(edge_conf * 100)}%",
         "",
         "📍 Multi-TF Snapshot",
         f"• 4H → RSI6: {snap.tf_4h.rsi6:.2f} | MACD: {_fmt_macd(snap.tf_4h.macd_hist)}",
@@ -150,6 +156,9 @@ def format_notification(signal, threshold: float = 0.8):
     """Render a Markdown Telegram/webhook notification."""
 
     snap = signal.snapshot
+
+    trade_conf = signal.trade_confidence or signal.confidence
+    edge_conf = signal.edge_confidence if hasattr(signal, "edge_confidence") else 0.0
 
     if not snap:
         return "Market snapshot unavailable; awaiting next refresh."
@@ -229,7 +238,7 @@ def format_notification(signal, threshold: float = 0.8):
         return summary, skew
 
     def _confidence_label():
-        pct = round(signal.confidence * 100)
+        pct = round(trade_conf * 100)
         suffix = " (High Probability)" if pct > 80 else ""
         return f"{pct}%{suffix}"
 
@@ -286,7 +295,7 @@ def format_notification(signal, threshold: float = 0.8):
     entries, tp_lines, sl_line = _format_levels()
     execution_type = _execution_type()
     conf_text = _confidence_label()
-    status_mode = signal.direction == "none" or signal.confidence < threshold
+    status_mode = signal.direction == "none" or trade_conf < threshold
 
     utc_ts = snap.ts.astimezone(timezone.utc)
     beijing_ts = utc_ts.astimezone(timezone(timedelta(hours=8)))
@@ -304,6 +313,7 @@ def format_notification(signal, threshold: float = 0.8):
         "🏁 Quick Take",
         f"• Bias: {decision_emoji} {decision_text} | Direction: {signal.direction}",
         f"• Confidence: {conf_text}",
+        f"• Edge: {int(edge_conf * 100)}%",
         f"• Plan: {execution_type if not status_mode else 'Monitor only'}",
         f"• Why: {_reason_text(execution_type)}",
     ]
@@ -434,7 +444,8 @@ def main():
         dashboard_text = render_signal_dashboard(signals)
         execution_mode = any(
             sig.direction != "none"
-            and sig.confidence >= base_settings.signal_confidence_threshold
+            and (sig.trade_confidence or sig.confidence)
+            >= base_settings.signal_confidence_threshold
             for sig in signals
         )
         results = notifier.send(
