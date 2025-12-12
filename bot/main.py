@@ -347,7 +347,7 @@ def main():
             action_lines.append(
                 format_action_line(sig.symbol, sig.snapshot, sig, action_level, bias)
             )
-        if action_level == 'WATCH':
+        if action_level == 'EXECUTE':
             execute_lines.append(
                 format_action_line(sig.symbol, sig.snapshot, sig, action_level, bias)
             )
