@@ -68,16 +68,51 @@ class SignalEngine:
             return self.settings.get(name, default)
         return default
 
+    def _get_regime_setting(self, name: str, default):
+        if hasattr(self.settings, "regime"):
+            container = getattr(self.settings, "regime")
+            if isinstance(container, dict):
+                return container.get(name, default)
+            if hasattr(container, name):
+                return getattr(container, name)
+        if isinstance(self.settings, dict):
+            regime_settings = self.settings.get("regime")
+            if isinstance(regime_settings, dict):
+                return regime_settings.get(name, default)
+        return default
+
+    def _apply_regime_override(self, regime_signal: RegimeSignal) -> RegimeSignal:
+        if regime_signal.regime != "trending":
+            return regime_signal
+
+        min_trend_ma_angle = self._get_regime_setting(
+            "min_trend_ma_angle", 0.001
+        )
+        max_trend_osc = self._get_regime_setting("max_trend_osc", 1)
+
+        weak_trend = (
+            abs(regime_signal.ma_angle) < min_trend_ma_angle
+            or regime_signal.osc_count <= max_trend_osc
+        )
+
+        if weak_trend:
+            return RegimeSignal(
+                regime="high_vol_ranging",
+                reason=regime_signal.reason,
+                ma_angle=regime_signal.ma_angle,
+                atr_rel=regime_signal.atr_rel,
+                rsi_avg_dev=regime_signal.rsi_avg_dev,
+                osc_count=regime_signal.osc_count,
+            )
+
+        return regime_signal
+
     def decide(self, snap: MarketSnapshot, regime_signal: RegimeSignal) -> TradeSignal:
+        regime_signal = self._apply_regime_override(regime_signal)
         regime = regime_signal.regime
 
-        # override: if regime says trending but structure is flat, route to ranging
-        if regime == "trending" and (
-            abs(getattr(snap, "maangle", 0.0)) < 1e-4 or getattr(snap, "osc", 0) == 0
-        ):
-            regime = "high_vol_ranging"
-
         snap.regime = regime
+        snap.regime_reason = regime_signal.reason
 
         if regime == "trending":
             return build_trend_following_signal(
@@ -197,7 +232,7 @@ class SignalEngine:
             elif snap.regime == "trending":
                 reason_prefix = "trending"
             signal.reason = (
-                f"[{reason_prefix}] {signal.reason} | regime={snap.regime} | {regime_signal.reason}"
+                f"[{reason_prefix}] {signal.reason} | regime={snap.regime} | {snap.regime_reason}"
             )
 
         return signal

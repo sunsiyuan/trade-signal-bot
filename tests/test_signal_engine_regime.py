@@ -2,6 +2,7 @@ from datetime import datetime
 
 from bot.config import Settings
 from bot.models import TimeframeIndicators, DerivativeIndicators, MarketSnapshot
+from bot.regime_detector import RegimeSignal
 from bot.signal_engine import SignalEngine
 
 
@@ -259,7 +260,7 @@ def test_trending_flow_still_uses_trend_logic():
         ma7=104,
         ma25=103,
         ma99=95,
-        rsi6=65,
+        rsi6=70,
         rsi12=63,
         rsi24=60,
         macd=0.8,
@@ -268,7 +269,7 @@ def test_trending_flow_still_uses_trend_logic():
         atr=0.8,
         volume=500,
         ma25_history=[98, 99, 100, 101, 102, 103],
-        rsi6_history=[55, 58, 60, 62, 64, 65],
+        rsi6_history=[70, 30, 70, 70, 70, 70],
         trend_label="up",
     )
     tf15 = make_tf(
@@ -305,3 +306,37 @@ def test_trending_flow_still_uses_trend_logic():
 
     assert signal.setup_type in {"trend_long", "trend_short", "none"}
     assert "[trending]" in (signal.reason or "")
+
+
+def test_trending_regime_not_overridden_when_ma_angle_valid():
+    engine = SignalEngine(Settings())
+
+    regime_signal = RegimeSignal(
+        regime="trending",
+        reason="",
+        ma_angle=0.01,
+        atr_rel=0.02,
+        rsi_avg_dev=5.0,
+        osc_count=3,
+    )
+
+    overridden = engine._apply_regime_override(regime_signal)
+
+    assert overridden.regime == "trending"
+
+
+def test_trending_regime_overridden_when_weak_trend():
+    engine = SignalEngine(Settings())
+
+    regime_signal = RegimeSignal(
+        regime="trending",
+        reason="",
+        ma_angle=0.00001,
+        atr_rel=0.02,
+        rsi_avg_dev=2.0,
+        osc_count=0,
+    )
+
+    overridden = engine._apply_regime_override(regime_signal)
+
+    assert overridden.regime == "high_vol_ranging"

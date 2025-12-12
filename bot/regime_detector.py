@@ -11,6 +11,10 @@ Regime = Literal["trending", "high_vol_ranging", "low_vol_ranging", "unknown"]
 class RegimeSignal:
     regime: Regime
     reason: str
+    ma_angle: float
+    atr_rel: float
+    rsi_avg_dev: float
+    osc_count: int
 
 
 def _get_nested(settings, group: str, key: str, default):
@@ -75,7 +79,14 @@ def detect_regime(snap: MarketSnapshot, settings) -> RegimeSignal:
 
     reason = (
         f"tf={main_tf} ma_angle={ma_angle:.4f} atr_rel={atr_rel:.4f} "
-        f"rsi_dev={rsi_avg_dev:.2f} osc={osc_count}"
+        f"rsi_avg_dev={rsi_avg_dev:.2f} osc_count={osc_count}"
     )
 
-    return RegimeSignal(regime=regime, reason=reason)
+    return RegimeSignal(
+        regime=regime,
+        reason=reason,
+        ma_angle=ma_angle,
+        atr_rel=atr_rel,
+        rsi_avg_dev=rsi_avg_dev,
+        osc_count=osc_count,
+    )

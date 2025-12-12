@@ -84,10 +84,12 @@ class Settings:
         default_factory=lambda: {
             "main_tf": "1h",
             "trend_ma_angle_min": 0.0015,
+            "min_trend_ma_angle": 0.001,
             "high_vol_atr_rel": 0.015,
             "low_vol_atr_rel": 0.006,
             "ranging_rsi_band": 12,
             "slope_lookback": 5,
+            "max_trend_osc": 1,
         }
     )
 
