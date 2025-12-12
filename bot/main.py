@@ -10,60 +10,140 @@ from .notify import Notifier
 from .signal_engine import SignalEngine
 
 
-def print_signal(signal):
-    snap = signal.snapshot
+def _direction_text(direction: str) -> str:
+    if direction == "long":
+        return "偏多（找多头机会）"
+    if direction == "short":
+        return "偏空（找空头机会）"
+    return "观望"
 
-    print("====== TRADE SIGNAL ======")
+
+def _direction_sentence(direction: str) -> str:
+    if direction == "long":
+        return "偏多，允许择机做多"
+    if direction == "short":
+        return "偏空，允许择机做空"
+    return "多空优势都不明显，观望优先"
+
+
+def _fmt_macd(value: float) -> str:
+    if value > 0:
+        return f"📈 Bullish ({value:+.4f})"
+    if value < 0:
+        return f"📉 Bearish ({value:+.4f})"
+    return f"⚖️ Flat ({value:+.4f})"
+
+
+def _ob_bias(asks: float, bids: float) -> str:
+    if asks > bids * 1.2:
+        return "卖盘略强（Asks 主导）"
+    if bids > asks * 1.2:
+        return "买盘略强（Bids 主导）"
+    return "多空挂单相对均衡"
+
+
+def _trend_icon(trend: str) -> tuple[str, str]:
+    mapping = {"up": ("🟢", "up"), "down": ("🔴", "down"), "range": ("⚖️", "sideway")}
+    return mapping.get(trend, ("⚖️", "sideway"))
+
+
+def _decision_icon(direction: str) -> str:
+    return {"long": "📈", "short": "📉"}.get(direction, "🧊")
+
+
+def format_signal_brief(signal):
+    snap = signal.snapshot
+    if not snap:
+        return f"{signal.symbol:<11} | 数据缺失"
+
+    trend_emoji, trend_text = _trend_icon(snap.tf_4h.trend_label)
+    price = snap.tf_15m.close
+    direction_text = _direction_text(signal.direction)
+    confidence_pct = int(signal.confidence * 100)
+    rsi_4h = snap.tf_4h.rsi6
+    oi = snap.deriv.open_interest
+
+    return (
+        f"{signal.symbol:<11} | "
+        f"💰 {price:>8.4f} | "
+        f"{trend_emoji} {trend_text:7} | "
+        f"{_decision_icon(signal.direction)} {direction_text:<10} | "
+        f"信心 {confidence_pct:>2d}% | "
+        f"4H RSI {rsi_4h:>5.1f} | "
+        f"OI {oi:>10,.0f}"
+    )
+
+
+def format_signal_detail(signal):
+    snap = signal.snapshot
+    if not snap:
+        return f"{signal.symbol}: snapshot unavailable"
+
+    trend_emoji, _ = _trend_icon(snap.tf_4h.trend_label)
+    decision_map = {
+        "long": ("✅ 准备做多", "多头 setup 出现，可以找入场点"),
+        "short": ("✅ 准备做空", "空头 setup 出现，可以找入场点"),
+        "none": ("🧊 继续观望", "多空优势不足，不交易更有优势"),
+    }
+    decision_title, decision_explain = decision_map.get(signal.direction or "none")
+
+    raw_reason = signal.reason or ""
+    if "|" in raw_reason:
+        human_reason, technical_note = raw_reason.split("|", 1)
+    else:
+        human_reason, technical_note = raw_reason, ""
+    human_reason = human_reason.strip() or "没有出现符合模板的入场信号。"
+    technical_note = technical_note.strip()
+
+    asks = sum(order.get("size", 0) for order in snap.deriv.orderbook_asks)
+    bids = sum(order.get("size", 0) for order in snap.deriv.orderbook_bids)
+    ob_bias = _ob_bias(asks, bids)
+
+    def _atr_comment() -> str:
+        ratio = snap.tf_15m.atr / max(snap.tf_1h.atr, 1e-6)
+        if ratio > 1.3:
+            return "High vol"
+        if ratio < 0.8:
+            return "Calm tape"
+        return "Normal swings"
+
     utc_ts = snap.ts.astimezone(timezone.utc)
     beijing_ts = utc_ts.astimezone(timezone(timedelta(hours=8)))
-    print(f"Time:   {utc_ts.isoformat()} (UTC)")
-    print(f"        {beijing_ts.isoformat()} (Beijing)")
-    print(f"Symbol: {signal.symbol}")
-    print()
 
-    # 1）多周期指标
-    def tf_row(tf):
-        return (
-            f"{tf.timeframe:>4} | "
-            f"close={tf.close:.4f} | "
-            f"MA7={tf.ma7:.2f}, MA25={tf.ma25:.2f}, MA99={tf.ma99:.2f} | "
-            f"RSI6={tf.rsi6:.2f}, RSI12={tf.rsi12:.2f}, RSI24={tf.rsi24:.2f} | "
-            f"MACD={tf.macd:.4f}, SIG={tf.macd_signal:.4f}, HIST={tf.macd_hist:.4f} | "
-            f"ATR={tf.atr:.4f} | Trend={tf.trend_label}"
-        )
+    lines = [
+        f"📌 {signal.symbol} — Trade Signal",
+        f"⏱ {beijing_ts.strftime('%Y-%m-%d %H:%M')} (UTC+8)",
+        f"💰 Price: {snap.tf_15m.close:.4f}",
+        f"{trend_emoji} | {decision_title} | 信心 {int(signal.confidence * 100)}%",
+        "",
+        "🏁 Summary",
+        f"• 核心结论：{decision_title}（{_direction_sentence(signal.direction)})",
+        f"• 执行建议：{decision_explain}",
+        f"• 主要原因：{human_reason}",
+        "",
+        "📍 Multi-TF Snapshot",
+        f"• 4H → RSI6: {snap.tf_4h.rsi6:.2f} | MACD: {_fmt_macd(snap.tf_4h.macd_hist)}",
+        f"• 1H → RSI6: {snap.tf_1h.rsi6:.2f} | MACD: {_fmt_macd(snap.tf_1h.macd_hist)}",
+        f"• 15m → RSI6: {snap.tf_15m.rsi6:.2f} | MACD: {_fmt_macd(snap.tf_15m.macd_hist)}",
+        "",
+        "📍 Vol & Positioning",
+        f"• ATR (15m / 1h): {snap.tf_15m.atr:.4f} / {snap.tf_1h.atr:.4f} → {_atr_comment()}",
+        f"• Funding: {snap.deriv.funding:.4%}",
+        f"• OI: {snap.deriv.open_interest:,.2f}",
+        "",
+        "📍 Liquidity",
+        f"• Orderbook: Asks {asks:,.0f} vs Bids {bids:,.0f} → {ob_bias}",
+    ]
 
-    print("=== Timeframe Indicators ===")
-    print(tf_row(snap.tf_4h))
-    print(tf_row(snap.tf_1h))
-    print(tf_row(snap.tf_15m))
-    print()
+    notes = technical_note or None
+    if notes:
+        lines.extend([
+            "",
+            "🔔 Note",
+            f"• {notes}",
+        ])
 
-    # 2）衍生品指标
-    d = snap.deriv
-    print("=== Derivative Indicators ===")
-    oi_change_text = "N/A" if d.oi_change_24h is None else f"{d.oi_change_24h:.2f}"
-    print(
-        f"Funding={d.funding:.6f}, "
-        f"OI={d.open_interest:.2f}, "
-        f"OI_24h_change={oi_change_text}, "
-        f"Liquidity={d.liquidity_comment}"
-    )
-    # 3）信号结果
-    print("=== Trade Signal ===")
-    print(f"Direction : {signal.direction}")
-    print(f"Confidence: {signal.confidence:.2f}")
-    print(f"Reason    : {signal.reason}")
-
-    if signal.direction != "none":
-        print(f"Entry range: {signal.entry_range}")
-        print(f"TP1: {signal.tp1} | TP2: {signal.tp2} | SL: {signal.sl}")
-        print(
-            f"Position: core={signal.core_position_pct * 100:.0f}% "
-            f"+ add={signal.add_position_pct * 100:.0f}%"
-        )
-    else:
-        print("暂无交易信号，等待下一次机会。")
-    print("===============================")
+    return "\n".join(lines)
 
 
 def format_notification(signal, threshold: float = 0.8):
@@ -302,6 +382,22 @@ def format_notification(signal, threshold: float = 0.8):
 
     return "\n".join(header + summary_lines + core_metrics + action_lines + reminder)
 
+
+def print_signal_dashboard(signals):
+    if not signals:
+        print("暂无交易信号。")
+        return
+
+    print("====== 多币种概览 ======")
+    for sig in signals:
+        print(format_signal_brief(sig))
+
+    print("\n====== 详细解析 ======")
+    for sig in signals:
+        print(format_signal_detail(sig))
+        print("-------------------")
+
+
 def main():
     base_settings = Settings()
     tracked = base_settings.tracked_symbols or [base_settings.symbol]
@@ -333,7 +429,7 @@ def main():
         signal = engine.generate_signal(snapshot)
         signals.append(signal)
 
-        print_signal(signal)
+    print_signal_dashboard(signals)
 
     if notifier.has_channels() and signals:
         messages = [
