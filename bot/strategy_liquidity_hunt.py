@@ -39,6 +39,17 @@ def build_liquidity_hunt_signal(
     sl_buffer_pct = _get_nested(settings, "liquidity_hunt", "sl_buffer_pct", 0.0015)
     core_pct = _get_nested(settings, "liquidity_hunt", "core_position_pct", 0.5)
     add_pct = _get_nested(settings, "liquidity_hunt", "add_position_pct", 0.25)
+    require_oi = _get_nested(settings, "liquidity_hunt", "require_oi", True)
+    allow_oi_missing_fallback = _get_nested(
+        settings, "liquidity_hunt", "allow_oi_missing_fallback", True
+    )
+    fallback_confidence = _get_nested(settings, "liquidity_hunt", "fallback_confidence", 0.65)
+    fallback_core_position_mult = _get_nested(
+        settings, "liquidity_hunt", "fallback_core_position_mult", 0.5
+    )
+    fallback_add_position_mult = _get_nested(
+        settings, "liquidity_hunt", "fallback_add_position_mult", 0.5
+    )
 
     tf = _get_tf(snap, tf_name)
     price = tf.close
@@ -59,22 +70,35 @@ def build_liquidity_hunt_signal(
         (snap.deriv.bid_wall_size or 0) >= min_wall_mult * (snap.deriv.ask_wall_size or 1e-6)
     )
 
-    oi_spike = (snap.deriv.oi_change_pct or 0.0) >= min_oi_spike_pct
-    oi_flush = (snap.deriv.oi_change_pct or 0.0) <= -min_oi_spike_pct
+    oi_change_pct = snap.deriv.oi_change_pct
+    oi_missing = oi_change_pct is None
+
+    if oi_missing and require_oi and not allow_oi_missing_fallback:
+        return None
+
+    oi_spike = oi_change_pct is not None and oi_change_pct >= min_oi_spike_pct
+    oi_flush = oi_change_pct is not None and oi_change_pct <= -min_oi_spike_pct
     small_candles_after_spike = tf.post_spike_small_body_count >= post_spike_candle_count
 
-    if near_swing_high and has_large_ask_wall and oi_spike and small_candles_after_spike:
+    fallback_mode = oi_missing and allow_oi_missing_fallback
+
+    if near_swing_high and has_large_ask_wall and (oi_spike or fallback_mode) and small_candles_after_spike:
         from .signal_engine import TradeSignal
         fake_breakout_high = max(tf.high_last_n or [swing_high, price])
         sl = fake_breakout_high * (1 + sl_buffer_pct)
         tp1 = swing_high - 0.5 * atr
         tp2 = swing_high - 1.0 * atr
-        confidence = 0.75
+        confidence = fallback_confidence if fallback_mode else 0.75
+        core_position_pct = core_pct * (fallback_core_position_mult if fallback_mode else 1.0)
+        add_position_pct = add_pct * (fallback_add_position_mult if fallback_mode else 1.0)
         reason = (
             f"Liquidity hunt short near swing high {swing_high:.4f}: price={price:.4f}, "
-            f"large ask wall, OI spike {snap.deriv.oi_change_pct or 0.0:.1f}%, "
-            f"post-spike small candles={tf.post_spike_small_body_count}"
+            f"large ask wall, OI {oi_change_pct if oi_change_pct is not None else float('nan'):.1f}% "
+            f"{'spike' if oi_spike else 'missing'}"
         )
+        reason += f", post-spike small candles={tf.post_spike_small_body_count}"
+        if fallback_mode:
+            reason += " | OI missing → fallback mode"
 
         return TradeSignal(
             symbol=snap.symbol,
@@ -84,24 +108,29 @@ def build_liquidity_hunt_signal(
             tp1=tp1,
             tp2=tp2,
             sl=sl,
-            core_position_pct=core_pct,
-            add_position_pct=add_pct,
+            core_position_pct=core_position_pct,
+            add_position_pct=add_position_pct,
             reason=reason,
             snapshot=snap,
         )
 
-    if near_swing_low and has_large_bid_wall and oi_flush and small_candles_after_spike:
+    if near_swing_low and has_large_bid_wall and (oi_flush or fallback_mode) and small_candles_after_spike:
         from .signal_engine import TradeSignal
         fake_breakout_low = min(tf.low_last_n or [swing_low, price])
         sl = fake_breakout_low * (1 - sl_buffer_pct)
         tp1 = swing_low + 0.5 * atr
         tp2 = swing_low + 1.0 * atr
-        confidence = 0.75
+        confidence = fallback_confidence if fallback_mode else 0.75
+        core_position_pct = core_pct * (fallback_core_position_mult if fallback_mode else 1.0)
+        add_position_pct = add_pct * (fallback_add_position_mult if fallback_mode else 1.0)
         reason = (
             f"Liquidity hunt long near swing low {swing_low:.4f}: price={price:.4f}, "
-            f"large bid wall, OI flush {snap.deriv.oi_change_pct or 0.0:.1f}%, "
-            f"post-spike small candles={tf.post_spike_small_body_count}"
+            f"large bid wall, OI {oi_change_pct if oi_change_pct is not None else float('nan'):.1f}% "
+            f"{'flush' if oi_flush else 'missing'}"
         )
+        reason += f", post-spike small candles={tf.post_spike_small_body_count}"
+        if fallback_mode:
+            reason += " | OI missing → fallback mode"
 
         return TradeSignal(
             symbol=snap.symbol,
@@ -111,8 +140,8 @@ def build_liquidity_hunt_signal(
             tp1=tp1,
             tp2=tp2,
             sl=sl,
-            core_position_pct=core_pct,
-            add_position_pct=add_pct,
+            core_position_pct=core_position_pct,
+            add_position_pct=add_position_pct,
             reason=reason,
             snapshot=snap,
         )
