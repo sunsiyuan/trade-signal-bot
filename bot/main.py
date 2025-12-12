@@ -233,6 +233,11 @@ def format_notification(signal, threshold: float = 0.8):
         suffix = " (High Probability)" if pct > 80 else ""
         return f"{pct}%{suffix}"
 
+    def _reason_text(execution_hint: str) -> str:
+        if signal.reason:
+            return signal.reason
+        return _contextual_comment(execution_hint)
+
     def _execution_type():
         if signal.entry_range and len(signal.entry_range) > 1:
             return "Ladder"
@@ -288,23 +293,19 @@ def format_notification(signal, threshold: float = 0.8):
     local_time_string = beijing_ts.strftime("%Y-%m-%d %H:%M")
 
     header = [
-        f"📌 {signal.symbol} — Trade Signal Update",
+        f"📌 {signal.symbol} — Trade Signal",
         f"⏱ {local_time_string} (UTC+8)",
+        f"{trend_emoji} Trend: {trend_phrase} | {decision_emoji} {decision_text}",
         f"💰 Price: {_fmt_price(snap.tf_15m.close)}",
-        f"📈 Trend: {trend_emoji} {trend_phrase}",
-        f"🧩 Decision: {decision_emoji} {decision_text}",
     ]
 
     summary_lines = [
         "",
-        "-------------------",
-        "",
-        "🏁 Summary",
-        f"• Decision: {decision_emoji} {decision_text}",
-        f"• Direction: {signal.direction}",
-        f"• Execution: {execution_type if not status_mode else 'N/A'}",
+        "🏁 Quick Take",
+        f"• Bias: {decision_emoji} {decision_text} | Direction: {signal.direction}",
         f"• Confidence: {conf_text}",
-        f"• Reason: {signal.reason or _contextual_comment(execution_type)}",
+        f"• Plan: {execution_type if not status_mode else 'Monitor only'}",
+        f"• Why: {_reason_text(execution_type)}",
     ]
 
     if not status_mode:
@@ -338,16 +339,12 @@ def format_notification(signal, threshold: float = 0.8):
         f"• Funding: {snap.deriv.funding * 100:.4f}%",
         oi_line,
         "",
-        "-------------------",
-        "",
-        "📍 Liquidity Check",
-        f"Orderbook: {liquidity_summary} → {liquidity_note}",
+        "📍 Liquidity",
+        f"• Orderbook: {liquidity_summary} → {liquidity_note}",
     ]
 
     if status_mode:
         reminder = [
-            "",
-            "-------------------",
             "",
             "🔔 Reminder",
             signal.reason or _contextual_comment(execution_type),
@@ -356,9 +353,7 @@ def format_notification(signal, threshold: float = 0.8):
 
     action_lines = [
         "",
-        "-------------------",
-        "",
-        "🎯 Action Summary",
+        "🎯 Action Plan",
         f"➡️ Direction: {signal.direction}",
         f"➡️ Execution: {execution_type}",
         "➡️ Levels:",
@@ -373,8 +368,6 @@ def format_notification(signal, threshold: float = 0.8):
     action_lines.append(f"➡️ Confidence: {conf_text}")
 
     reminder = [
-        "",
-        "-------------------",
         "",
         "🔔 Reminder",
         _contextual_comment(execution_type),
