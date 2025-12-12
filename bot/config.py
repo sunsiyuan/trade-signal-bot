@@ -103,6 +103,10 @@ class Settings:
             "core_position_pct": 0.5,
             "add_position_pct": 0.25,
             "sl_buffer_mult": 0.8,
+            "require_oi": True,
+            "allow_oi_missing_fallback": True,
+            "fallback_confidence_mult": 0.75,
+            "fallback_core_position_mult": 0.5,
         }
     )
 
@@ -118,5 +122,10 @@ class Settings:
             "sl_buffer_pct": 0.0015,
             "core_position_pct": 0.5,
             "add_position_pct": 0.25,
+            "require_oi": True,
+            "allow_oi_missing_fallback": True,
+            "fallback_confidence": 0.65,
+            "fallback_core_position_mult": 0.5,
+            "fallback_add_position_mult": 0.5,
         }
     )
