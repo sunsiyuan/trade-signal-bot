@@ -29,26 +29,26 @@ def _decision_cn(direction: str) -> str:
 def _regime_display(regime: str, market_mode: str, trend_label: str) -> Tuple[str, str]:
     mapping = {
         "trending": "趋势",
-        "high_vol_ranging": "震荡",
-        "low_vol_ranging": "震荡",
+        "high_vol_ranging": "高波动震荡",
+        "low_vol_ranging": "低波动震荡",
     }
     regime_cn = mapping.get(regime, regime or "unknown")
     if regime_cn == "趋势":
         if trend_label == "up":
-            return "🟢", regime_cn
+            return "🟢", "上涨趋势"
         if trend_label == "down":
-            return "🔻", regime_cn
-        return "🟣", regime_cn
+            return "🔻", "下跌趋势"
+        return "🟣", "趋势态势（方向未定）"
     return "⚖️", regime_cn
 
 
 def _setup_code(setup_type: str) -> str:
     mapping = {
-        "trend_long": "TF",
-        "trend_short": "TF",
-        "mean_reversion": "MR",
-        "liquidity_hunt": "LH",
-        "none": "none",
+        "trend_long": "趋势跟随TF",
+        "trend_short": "趋势跟随TF",
+        "mean_reversion": "均值回归MR",
+        "liquidity_hunt": "流动性狩猎LH",
+        "none": "无",
     }
     return mapping.get(setup_type, setup_type or "none")
 
@@ -335,11 +335,10 @@ def main():
         emit_multi_tf_log(snapshot, signal, symbol_settings, exchange_id=exchange.id)
         signals.append(signal)
 
-    print(render_signal_dashboard(signals))
-
     beijing_line = _beijing_now().strftime("%Y-%m-%d %H:%M") + " (UTC+8)"
     summary_lines = []
     action_lines = []
+    execute_lines = []
 
     for sig in signals:
         summary_lines.append(format_summary_line(sig.symbol, sig.snapshot, sig))
@@ -348,24 +347,27 @@ def main():
             action_lines.append(
                 format_action_line(sig.symbol, sig.snapshot, sig, action_level, bias)
             )
+        if action_level == 'WATCH':
+            execute_lines.append(
+                format_action_line(sig.symbol, sig.snapshot, sig, action_level, bias)
+            )
 
     summary_message = "\n".join([beijing_line] + summary_lines)
+
+    print(summary_message)
+
     action_message = (
         "\n".join([beijing_line] + action_lines) if action_lines else None
     )
+    execute_message = (
+        "\n".join([beijing_line] + execute_lines) if execute_lines else None
+    )
 
-    action_token = (
-        base_settings.telegram_action_token
-        or base_settings.telegram_summary_token
-        or base_settings.telegram_token
-    )
-    action_chat = (
-        base_settings.telegram_action_chat_id
-        or base_settings.telegram_summary_chat_id
-        or base_settings.telegram_chat_id
-    )
-    summary_token = base_settings.telegram_summary_token or base_settings.telegram_token
-    summary_chat = base_settings.telegram_summary_chat_id or base_settings.telegram_chat_id
+    action_token = base_settings.telegram_action_token
+    action_chat = base_settings.telegram_chat_id
+    
+    summary_token = base_settings.telegram_summary_token
+    summary_chat = base_settings.telegram_summary_chat_id
 
     results = {}
     if action_message and action_token and action_chat:
@@ -378,11 +380,11 @@ def main():
             summary_token, summary_chat, summary_message
         )
 
-    if notifier.has_channels() and (notifier.ftqq_key or notifier.webhook_url):
+    if execute_message and notifier.has_channels() and (notifier.ftqq_key or notifier.webhook_url):
         results.update(
             notifier.send(
-                message=summary_message,
-                title="Hyperliquid Trade Signal",
+                message=action_message,
+                title="交易执行信号",
                 include_ftqq=True,
             )
         )
