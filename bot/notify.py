@@ -77,6 +77,13 @@ class Notifier:
 
         return response.ok
 
+    def send_telegram_with(self, token: str, chat_id: str, message: str) -> bool:
+        """Send a Telegram message using explicit credentials."""
+
+        self.telegram_token = token
+        self.telegram_chat_id = chat_id
+        return self.send_telegram(message)
+
     def send_wechat_ftqq(self, title: str, message: str) -> bool:
         """Send a notification through Server酱 (ftqq)."""
 
