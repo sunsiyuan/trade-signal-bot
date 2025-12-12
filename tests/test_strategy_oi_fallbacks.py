@@ -94,6 +94,30 @@ def test_mean_reversion_allows_fallback_when_oi_missing():
     assert "OI missing → fallback mode" in signal.reason
 
 
+def test_mean_reversion_fallback_uses_separate_core_and_add_mult():
+    tf = make_timeframe("1h", close=90, ma25=100, rsi6=10, atr=5)
+    snap = make_snapshot(tf, make_deriv(oi_change_pct=None))
+
+    signal = build_mean_reversion_signal(
+        snap,
+        regime="high_vol_ranging",
+        settings={
+            "mean_reversion": {
+                "allow_oi_missing_fallback": True,
+                "core_position_pct": 1.0,
+                "add_position_pct": 0.5,
+                "fallback_core_position_mult": 0.5,
+                "fallback_add_position_mult": 0.0,
+            }
+        },
+    )
+
+    assert signal is not None
+    assert signal.core_position_pct == pytest.approx(0.5)
+    assert signal.add_position_pct == pytest.approx(0.0)
+    assert "OI missing → fallback mode" in signal.reason
+
+
 def test_mean_reversion_requires_oi_when_fallback_disabled():
     tf = make_timeframe("1h", close=90, ma25=100, rsi6=10, atr=5)
     snap = make_snapshot(tf, make_deriv(oi_change_pct=None))
