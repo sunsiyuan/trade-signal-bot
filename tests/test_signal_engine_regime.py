@@ -303,4 +303,4 @@ def test_trending_flow_still_uses_trend_logic():
     signal = engine.generate_signal(snap)
 
     assert signal.setup_type in {"trend_long", "trend_short", "none"}
-    assert "[trend]" in (signal.reason or "")
+    assert "[trending]" in (signal.reason or "")

@@ -45,8 +45,12 @@ def _ob_bias(asks: float, bids: float) -> str:
 
 
 def _trend_icon(trend: str) -> tuple[str, str]:
-    mapping = {"up": ("🟢", "up"), "down": ("🔴", "down"), "range": ("⚖️", "sideway")}
-    return mapping.get(trend, ("⚖️", "sideway"))
+    mapping = {
+        "up": ("🟢", "趋势上行"),
+        "down": ("🔴", "趋势下行"),
+        "range": ("⚖️", "震荡"),
+    }
+    return mapping.get(trend, ("⚖️", "震荡"))
 
 
 def _decision_icon(direction: str) -> str:
