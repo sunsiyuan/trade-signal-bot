@@ -102,8 +102,16 @@ class SignalEngine:
         confirm_long = clamp((45 - rsi1h) / 15, 0.0, 1.0)
         confirm_short = clamp((rsi1h - 55) / 15, 0.0, 1.0)
 
-        atrrel = snap.atrrel if snap.atrrel is not None else 0.0
-        tape = clamp((0.02 - atrrel) / (0.02 - 0.008), 0.0, 1.0)
+        if snap.atrrel is None:
+            atrrel = None
+            tape = 0.5  # neutral, not bullish when missing
+            atrrel_missing = True
+            tape_reason = "atrrel_missing_fallback"
+        else:
+            atrrel = snap.atrrel
+            tape = clamp((0.02 - atrrel) / (0.02 - 0.008), 0.0, 1.0)
+            atrrel_missing = False
+            tape_reason = "atrrel_based"
 
         asks = snap.asks if snap.asks is not None else 0.0
         bids = snap.bids if snap.bids is not None else 0.0
@@ -128,6 +136,9 @@ class SignalEngine:
             "abs_dev": round(abs_dev, 4),
             "tape": round(tape, 4),
             "ob": round(ob, 4),
+            "atrrel": atrrel,
+            "atrrel_missing": atrrel_missing,
+            "tape_reason": tape_reason,
         }
 
     def _decide_range(self, snap: MarketSnapshot) -> TradeSignal:
