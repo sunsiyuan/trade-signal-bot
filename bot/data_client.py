@@ -344,6 +344,12 @@ class HyperliquidDataClient:
 
         ts = datetime.now(timezone.utc)
 
+        asks = sum(order.get("size", 0) for order in deriv.orderbook_asks)
+        bids = sum(order.get("size", 0) for order in deriv.orderbook_bids)
+
+        atrrel = tf1.atr / max(tf1.close, 1e-6)
+        rsidev = (tf1.close - tf1.ma25) / max(tf1.ma25, 1e-6)
+
         return MarketSnapshot(
             symbol=self.settings.symbol,
             ts=ts,
@@ -351,4 +357,10 @@ class HyperliquidDataClient:
             tf_1h=tf1,
             tf_15m=tf15,
             deriv=deriv,
+            atrrel=atrrel,
+            rsidev=rsidev,
+            rsi_15m=tf15.rsi6,
+            rsi_1h=tf1.rsi6,
+            asks=asks,
+            bids=bids,
         )

@@ -5,8 +5,10 @@ from typing import Optional, List, Dict
 from .config import Settings
 from .models import MarketSnapshot, Direction
 from .regime_detector import detect_regime, RegimeSignal
-from .strategy_mean_reversion import build_mean_reversion_signal
-from .strategy_liquidity_hunt import build_liquidity_hunt_signal
+
+
+def clamp(value: float, min_value: float = 0.0, max_value: float = 1.0) -> float:
+    return max(min_value, min(max_value, value))
 
 
 @dataclass
@@ -14,8 +16,11 @@ class TradeSignal:
     """最终要输出的执行方案。"""
     symbol: str
     direction: Direction            # "long" / "short" / "none"
-    confidence: float               # 0~1，用来映射“胜率区间”
-    reason: str                     # 文字解释，方便你人工 review
+    reason: str = ""                # 文字解释，方便你人工 review
+    confidence: float = 0.0         # 兼容旧字段，映射到 trade_confidence
+    trade_confidence: float = 0.0   # 0~1，用来映射“胜率区间”
+    edge_confidence: float = 0.0    # 0~1，区间边缘机会强度
+    setup_type: str = "none"        # "trend_long" / "trend_short" / "range_long" / "range_short" / "none"
 
     # 点位
     entry: Optional[float] = None
@@ -32,6 +37,13 @@ class TradeSignal:
     # 为了 debug，把关键指标也带出来（可选）
     snapshot: Optional[MarketSnapshot] = None
     debug_scores: Optional[Dict] = None
+
+    def __post_init__(self):
+        # 保持与旧 confidence 字段的兼容性
+        if self.trade_confidence == 0 and self.confidence:
+            self.trade_confidence = self.confidence
+        if self.confidence == 0 and self.trade_confidence:
+            self.confidence = self.trade_confidence
 
 
 class SignalEngine:
@@ -238,9 +250,112 @@ class SignalEngine:
             return {"core": 0.4, "add": 0.2}
         return {"core": 0.0, "add": 0.0}
 
-    def _build_trend_follow_signal(
-        self, snap: MarketSnapshot, regime_signal: RegimeSignal
-    ) -> TradeSignal:
+    def decide(self, snap: MarketSnapshot, regime_signal: RegimeSignal) -> TradeSignal:
+        regime = snap.regime
+        if regime in ("trending", "trend", "momentum"):
+            return self._decide_trend(snap, regime_signal)
+        if regime in ("highvolranging", "high_vol_ranging", "ranging", "sideway"):
+            return self._decide_range(snap)
+        return self._decide_trend(snap, regime_signal)
+
+    def _range_setup_score(self, snap: MarketSnapshot) -> Dict[str, float]:
+        abs_rsidev = abs(snap.rsidev)
+
+        edge = clamp(abs_rsidev / 3.0, 0.0, 1.0)
+
+        rsi15 = snap.rsi_15m if snap.rsi_15m is not None else snap.tf_15m.rsi6
+        rsi1h = snap.rsi_1h if snap.rsi_1h is not None else snap.tf_1h.rsi6
+
+        oversold = clamp((35 - rsi15) / 15, 0.0, 1.0)
+        overbought = clamp((rsi15 - 65) / 15, 0.0, 1.0)
+        confirm_long = clamp((45 - rsi1h) / 15, 0.0, 1.0)
+        confirm_short = clamp((rsi1h - 55) / 15, 0.0, 1.0)
+
+        atrrel = snap.atrrel if snap.atrrel is not None else 0.0
+        tape = clamp((0.02 - atrrel) / (0.02 - 0.008), 0.0, 1.0)
+
+        asks = snap.asks if snap.asks is not None else 0.0
+        bids = snap.bids if snap.bids is not None else 0.0
+        ob = clamp((bids - asks) / (bids + asks + 1e-9), -1.0, 1.0)
+        ob_long = clamp(ob, 0.0, 1.0)
+        ob_short = clamp(-ob, 0.0, 1.0)
+
+        mid_penalty = 1 - edge
+
+        long_score = edge * (
+            0.45 * oversold + 0.20 * confirm_long + 0.20 * tape + 0.15 * ob_long
+        )
+        short_score = edge * (
+            0.45 * overbought + 0.20 * confirm_short + 0.20 * tape + 0.15 * ob_short
+        )
+
+        return {
+            "edge": round(edge, 4),
+            "long": round(long_score, 4),
+            "short": round(short_score, 4),
+            "mid_penalty": round(mid_penalty, 4),
+        }
+
+    def _decide_range(self, snap: MarketSnapshot) -> TradeSignal:
+        scores = self._range_setup_score(snap)
+        edge = scores["edge"]
+        long_s = scores["long"]
+        short_s = scores["short"]
+
+        if edge < 0.35:
+            return TradeSignal(
+                symbol=snap.symbol,
+                direction="none",
+                trade_confidence=0.0,
+                edge_confidence=edge,
+                setup_type="none",
+                reason=f"No setup | ranging mid-zone (edge={edge:.2f})",
+                snapshot=snap,
+                debug_scores=scores,
+            )
+
+        best_dir = "long" if long_s > short_s else "short"
+        best = max(long_s, short_s)
+
+        if best < 0.55:
+            return TradeSignal(
+                symbol=snap.symbol,
+                direction="none",
+                trade_confidence=0.0,
+                edge_confidence=best,
+                setup_type="none",
+                reason=f"Weak range edge | best={best:.2f} edge={edge:.2f}",
+                snapshot=snap,
+                debug_scores=scores,
+            )
+
+        trade_conf = best * 0.75
+        if best_dir == "long":
+            return TradeSignal(
+                symbol=snap.symbol,
+                direction="long",
+                confidence=trade_conf,
+                trade_confidence=trade_conf,
+                edge_confidence=best,
+                setup_type="range_long",
+                reason=f"Range long | edge={edge:.2f} score={best:.2f}",
+                snapshot=snap,
+                debug_scores=scores,
+            )
+
+        return TradeSignal(
+            symbol=snap.symbol,
+            direction="short",
+            confidence=trade_conf,
+            trade_confidence=trade_conf,
+            edge_confidence=best,
+            setup_type="range_short",
+            reason=f"Range short | edge={edge:.2f} score={best:.2f}",
+            snapshot=snap,
+            debug_scores=scores,
+        )
+
+    def _decide_trend(self, snap: MarketSnapshot, regime_signal: RegimeSignal) -> TradeSignal:
         scores = self._score_direction(snap)
         short_score = scores["short"]
         long_score = scores["long"]
@@ -253,6 +368,8 @@ class SignalEngine:
                 symbol=snap.symbol,
                 direction="none",
                 confidence=round(confidence, 2),
+                trade_confidence=round(confidence, 2),
+                setup_type="none",
                 reason=(
                     f"多空得分不足（long={long_score:.2f}, "
                     f"short={short_score:.2f}），继续观望"
@@ -269,6 +386,8 @@ class SignalEngine:
                 symbol=snap.symbol,
                 direction="none",
                 confidence=round(confidence, 2),
+                trade_confidence=round(confidence, 2),
+                setup_type="none",
                 reason=f"行情模式为 {regime}，信号强度 {confidence:.2f} 不足以出手",
                 snapshot=snap,
                 debug_scores=scores,
@@ -279,6 +398,8 @@ class SignalEngine:
                 symbol=snap.symbol,
                 direction="none",
                 confidence=round(confidence, 2),
+                trade_confidence=round(confidence, 2),
+                setup_type="none",
                 reason="做空条件未满足高胜率模板，等待更好的 setup",
                 snapshot=snap,
                 debug_scores=scores,
@@ -289,6 +410,8 @@ class SignalEngine:
                 symbol=snap.symbol,
                 direction="none",
                 confidence=round(confidence, 2),
+                trade_confidence=round(confidence, 2),
+                setup_type="none",
                 reason="做多条件未满足高胜率模板，等待更好的 setup",
                 snapshot=snap,
                 debug_scores=scores,
@@ -305,6 +428,8 @@ class SignalEngine:
                 symbol=snap.symbol,
                 direction="none",
                 confidence=round(confidence, 2),
+                trade_confidence=round(confidence, 2),
+                setup_type="none",
                 reason=(
                     f"信号待确认：等待价格触发 {trigger:.2f} 以执行 {bias} 入场"
                 ),
@@ -334,6 +459,8 @@ class SignalEngine:
             symbol=snap.symbol,
             direction=bias,
             confidence=round(confidence, 2),
+            trade_confidence=round(confidence, 2),
+            setup_type="trend_short" if bias == "short" else "trend_long",
             reason=(
                 f"{regime} 模式下触发确认价，按 R 结构下单，TP/SL 动态；"
                 f"score long={long_score:.2f} / short={short_score:.2f}"
@@ -352,48 +479,19 @@ class SignalEngine:
 
     def generate_signal(self, snap: MarketSnapshot) -> TradeSignal:
         regime_signal = detect_regime(snap, self.settings)
-        regime = regime_signal.regime
+        snap.regime = regime_signal.regime
+        snap.regime_reason = regime_signal.reason
 
-        candidates: List[TradeSignal] = []
-        fallback: Optional[TradeSignal] = None
+        signal = self.decide(snap, regime_signal)
 
-        if regime == "trending":
-            trend_sig = self._build_trend_follow_signal(snap, regime_signal)
-            if trend_sig:
-                trend_sig.reason = (
-                    f"[trend] {trend_sig.reason} | regime={regime} | {regime_signal.reason}"
-                )
-                if trend_sig.direction != "none":
-                    candidates.append(trend_sig)
-                else:
-                    fallback = trend_sig
-        else:
-            mr_sig = build_mean_reversion_signal(snap, regime, self.settings)
-            if mr_sig is not None:
-                mr_sig.reason = (
-                    f"[mean_reversion] {mr_sig.reason} | regime={regime} | {regime_signal.reason}"
-                )
-                candidates.append(mr_sig)
-
-            if regime == "high_vol_ranging":
-                lh_sig = build_liquidity_hunt_signal(snap, regime, self.settings)
-                if lh_sig is not None:
-                    lh_sig.reason = (
-                        f"[liquidity_hunt] {lh_sig.reason} | regime={regime} | {regime_signal.reason}"
-                    )
-                    candidates.append(lh_sig)
-
-        if not candidates:
-            if fallback:
-                return fallback
-
-            return TradeSignal(
-                symbol=snap.symbol,
-                direction="none",
-                confidence=0.0,
-                reason=f"No setup | regime={regime} | {regime_signal.reason}",
-                snapshot=snap,
+        if signal and signal.reason:
+            reason_prefix = (
+                "range"
+                if "range" in (signal.setup_type or "") or "range" in snap.regime
+                else "trend"
+            )
+            signal.reason = (
+                f"[{reason_prefix}] {signal.reason} | regime={snap.regime} | {regime_signal.reason}"
             )
 
-        best = max(candidates, key=lambda s: s.confidence)
-        return best
+        return signal
