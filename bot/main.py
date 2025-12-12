@@ -1,6 +1,8 @@
 # bot/main.py
+import json
+import subprocess
 from dataclasses import replace
-from datetime import timezone, timedelta
+from datetime import timezone, timedelta, datetime
 
 import ccxt
 
@@ -407,6 +409,153 @@ def render_signal_dashboard(signals) -> str:
     return "\n".join(lines)
 
 
+def _tf_to_timedelta(tf: str) -> timedelta:
+    tf = tf.lower()
+    if tf.endswith("m"):
+        return timedelta(minutes=int(tf[:-1]))
+    if tf.endswith("h"):
+        return timedelta(hours=int(tf[:-1]))
+    raise ValueError(f"Unsupported timeframe: {tf}")
+
+
+def emit_multi_tf_log(snapshot, signal, settings: Settings, exchange_id: str = "") -> None:
+    run_ts = datetime.now(timezone.utc)
+    tf_map = {
+        snapshot.tf_15m.timeframe: snapshot.tf_15m,
+        snapshot.tf_1h.timeframe: snapshot.tf_1h,
+        snapshot.tf_4h.timeframe: snapshot.tf_4h,
+    }
+    tf_list = [settings.tf_15m, settings.tf_1h, settings.tf_4h]
+    anchor_tf = settings.tf_1h
+    anchor = tf_map.get(anchor_tf)
+    anchor_close = anchor.last_candle_close_utc if anchor else None
+
+    tf_close_delta_sec = {}
+    alignment_ok = True
+    alignment_reason = ""
+    for tf_name, tf in tf_map.items():
+        if anchor_close and tf.last_candle_close_utc:
+            delta = (tf.last_candle_close_utc - anchor_close).total_seconds()
+            tf_close_delta_sec[tf_name] = delta
+            if abs(delta) > 1e-6:
+                alignment_ok = False
+                alignment_reason = f"{tf_name} close misaligned vs {anchor_tf}"
+        else:
+            tf_close_delta_sec[tf_name] = None
+            alignment_ok = False
+            alignment_reason = alignment_reason or "missing_close_time"
+
+        if not tf.is_last_candle_closed:
+            alignment_ok = False
+            alignment_reason = alignment_reason or f"{tf_name} last candle open"
+
+    latest_close = max(
+        (tf.last_candle_close_utc for tf in tf_map.values() if tf.last_candle_close_utc),
+        default=run_ts,
+    )
+    data_latency_sec = (run_ts - latest_close).total_seconds()
+
+    def _tf_block(tf):
+        return {
+            "tf": tf.timeframe,
+            "last_candle_open_utc": tf.last_candle_open_utc.isoformat() if tf.last_candle_open_utc else None,
+            "last_candle_close_utc": tf.last_candle_close_utc.isoformat() if tf.last_candle_close_utc else None,
+            "is_last_candle_closed": tf.is_last_candle_closed,
+            "bars_used": tf.bars_used,
+            "lookback_window": tf.lookback_window,
+            "missing_bars_count": tf.missing_bars_count,
+            "gap_list": tf.gap_list,
+            "prices": {
+                "price_last": tf.price_last,
+                "price_mid": tf.price_mid,
+                "typical_price": tf.typical_price,
+                "mark": None,
+                "index": None,
+                "return_last": tf.return_last,
+            },
+            "volatility": {
+                "atr": tf.atr,
+                "atr_rel": tf.atr_rel,
+                "tr_last": tf.tr_last,
+            },
+            "indicators": {
+                "rsi_6": tf.rsi6,
+                "rsi_12": tf.rsi12,
+                "rsi_24": tf.rsi24,
+                "macd_value": tf.macd,
+                "macd_signal": tf.macd_signal,
+                "macd_hist": tf.macd_hist,
+                "ma7": tf.ma7,
+                "ma25": tf.ma25,
+                "ma99": tf.ma99,
+                "ma_angle": getattr(tf, "ma_angle", None),
+            },
+        }
+
+    alignment_block = {
+        "anchor_tf": anchor_tf,
+        "anchor_close_utc": anchor_close.isoformat() if anchor_close else None,
+        "tf_close_delta_sec": tf_close_delta_sec,
+        "alignment_ok": alignment_ok,
+        "alignment_reason": alignment_reason or "ok",
+    }
+
+    def _action() -> str:
+        if signal.direction == "long":
+            return "LONG"
+        if signal.direction == "short":
+            return "SHORT"
+        return "NO_TRADE"
+
+    anchor_delta = _tf_to_timedelta(anchor_tf)
+    valid_until_utc = (anchor_close + anchor_delta).isoformat() if anchor_close else None
+
+    debug_scores = signal.debug_scores or {}
+    long_score = debug_scores.get("long")
+    short_score = debug_scores.get("short")
+    best_score = None
+    if long_score is not None and short_score is not None:
+        best_score = max(long_score, short_score)
+
+    try:
+        source_commit = (
+            subprocess.check_output(["git", "rev-parse", "HEAD"], text=True)
+            .strip()
+        )
+    except Exception:
+        source_commit = ""
+
+    payload = {
+        "meta": {
+            "symbol": snapshot.symbol,
+            "exchange": exchange_id,
+            "run_ts_utc": run_ts.isoformat(),
+            "source_commit": source_commit,
+            "data_latency_sec": data_latency_sec,
+            "tf_list": tf_list,
+        },
+        "timeframes": [_tf_block(tf_map[tf]) for tf in tf_list if tf in tf_map],
+        "alignment": alignment_block,
+        "gates": {
+            "regime": snapshot.regime,
+            "long_score": long_score,
+            "short_score": short_score,
+            "best_score": best_score,
+            "edge_score": signal.edge_confidence,
+            "edge_conf": signal.edge_confidence,
+            "trade_conf": signal.trade_confidence or signal.confidence,
+            "rejected_reasons": signal.rejected_reasons or [],
+            "thresholds_snapshot": signal.thresholds_snapshot or {},
+        },
+        "decision": {
+            "action": _action(),
+            "valid_until_utc": valid_until_utc,
+        },
+    }
+
+    print(json.dumps(payload, ensure_ascii=False))
+
+
 def main():
     base_settings = Settings()
     tracked = base_settings.tracked_symbols or [base_settings.symbol]
@@ -436,6 +585,7 @@ def main():
         )
         snapshot = client.build_market_snapshot()
         signal = engine.generate_signal(snapshot)
+        emit_multi_tf_log(snapshot, signal, symbol_settings, exchange_id=exchange.id)
         signals.append(signal)
 
     print_signal_dashboard(signals)

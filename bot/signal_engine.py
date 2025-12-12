@@ -37,6 +37,8 @@ class TradeSignal:
     # 为了 debug，把关键指标也带出来（可选）
     snapshot: Optional[MarketSnapshot] = None
     debug_scores: Optional[Dict] = None
+    rejected_reasons: Optional[List[str]] = None
+    thresholds_snapshot: Optional[Dict] = None
 
     def __post_init__(self):
         # 保持与旧 confidence 字段的兼容性
@@ -311,6 +313,7 @@ class SignalEngine:
         edge = scores["edge"]
         long_s = scores["long"]
         short_s = scores["short"]
+        thresholds = {"edge_min": 0.35, "best_min": 0.55}
 
         if edge < 0.35:
             return TradeSignal(
@@ -322,6 +325,8 @@ class SignalEngine:
                 reason=f"No setup | ranging mid-zone (edge={edge:.2f})",
                 snapshot=snap,
                 debug_scores=scores,
+                rejected_reasons=["edge_below_threshold"],
+                thresholds_snapshot=thresholds,
             )
 
         best_dir = "long" if long_s > short_s else "short"
@@ -337,6 +342,8 @@ class SignalEngine:
                 reason=f"Range watch | best={best:.2f} edge={edge:.2f}",
                 snapshot=snap,
                 debug_scores=scores,
+                rejected_reasons=["score_below_threshold"],
+                thresholds_snapshot=thresholds,
             )
 
         trade_conf = best * 0.75
@@ -351,6 +358,8 @@ class SignalEngine:
                 reason=f"Range long | edge={edge:.2f} score={best:.2f}",
                 snapshot=snap,
                 debug_scores=scores,
+                rejected_reasons=[],
+                thresholds_snapshot=thresholds,
             )
 
         return TradeSignal(
@@ -363,6 +372,8 @@ class SignalEngine:
             reason=f"Range short | edge={edge:.2f} score={best:.2f}",
             snapshot=snap,
             debug_scores=scores,
+            rejected_reasons=[],
+            thresholds_snapshot=thresholds,
         )
 
     def _decide_trend(self, snap: MarketSnapshot, regime_signal: RegimeSignal) -> TradeSignal:
@@ -374,6 +385,7 @@ class SignalEngine:
         confidence = max(short_score, long_score)
         trend_bias = abs(long_score - short_score)
         trend_bias_conf = clamp(trend_bias / 0.3, 0.0, 1.0)
+        thresholds = {"min_confidence": self.min_confidence, "regime_trade_min": 0.8, "trigger_atr_mult": 0.3}
 
         if confidence < self.min_confidence:
             return TradeSignal(
@@ -389,6 +401,8 @@ class SignalEngine:
                 ),
                 snapshot=snap,
                 debug_scores={**scores, "trend_bias_conf": round(trend_bias_conf, 4)},
+                rejected_reasons=["confidence_below_min"],
+                thresholds_snapshot=thresholds,
             )
 
         regime = regime_signal.regime
@@ -405,6 +419,8 @@ class SignalEngine:
                 reason=f"行情模式为 {regime}，信号强度 {confidence:.2f} 不足以出手",
                 snapshot=snap,
                 debug_scores={**scores, "trend_bias_conf": round(trend_bias_conf, 4)},
+                rejected_reasons=["regime_not_trending", "confidence_below_regime_threshold"],
+                thresholds_snapshot=thresholds,
             )
 
         if bias == "short" and not self._high_conf_short(snap):
@@ -418,6 +434,8 @@ class SignalEngine:
                 reason="做空条件未满足高胜率模板，等待更好的 setup",
                 snapshot=snap,
                 debug_scores={**scores, "trend_bias_conf": round(trend_bias_conf, 4)},
+                rejected_reasons=["no_high_conf_short"],
+                thresholds_snapshot=thresholds,
             )
 
         if bias == "long" and not self._high_conf_long(snap):
@@ -431,6 +449,8 @@ class SignalEngine:
                 reason="做多条件未满足高胜率模板，等待更好的 setup",
                 snapshot=snap,
                 debug_scores={**scores, "trend_bias_conf": round(trend_bias_conf, 4)},
+                rejected_reasons=["no_high_conf_long"],
+                thresholds_snapshot=thresholds,
             )
 
         tf15 = snap.tf_15m
@@ -453,6 +473,8 @@ class SignalEngine:
                 entry=trigger,
                 snapshot=snap,
                 debug_scores={**scores, "trend_bias_conf": round(trend_bias_conf, 4)},
+                rejected_reasons=["price_not_triggered"],
+                thresholds_snapshot=thresholds,
             )
 
         entry = trigger
@@ -492,6 +514,8 @@ class SignalEngine:
             add_position_pct=position["add"],
             snapshot=snap,
             debug_scores={**scores, "regime": regime, "trigger": trigger, "R": R},
+            rejected_reasons=[],
+            thresholds_snapshot=thresholds,
         )
 
     def generate_signal(self, snap: MarketSnapshot) -> TradeSignal:
