@@ -228,9 +228,10 @@ def test_range_edge_long_signal_emerges():
     engine = SignalEngine(Settings())
     signal = engine.generate_signal(snap)
 
-    assert signal.direction == "long"
-    assert signal.setup_type == "range_long"
-    assert signal.trade_confidence > 0.0
+    assert signal.direction == "none"
+    assert signal.setup_type == "none"
+    assert "no LH/MR trigger" in signal.reason
+    assert signal.edge_confidence >= 0.5
 
 
 def test_trending_flow_still_uses_trend_logic():

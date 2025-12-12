@@ -131,70 +131,44 @@ class SignalEngine:
         }
 
     def _decide_range(self, snap: MarketSnapshot) -> TradeSignal:
+        from .strategy_liquidity_hunt import build_liquidity_hunt_signal
+        from .strategy_mean_reversion import build_mean_reversion_signal
+
         scores = self._range_setup_score(snap)
         edge = scores["edge"]
-        long_s = scores["long"]
-        short_s = scores["short"]
+        best = max(scores["long"], scores["short"])
+        regime = getattr(snap, "regime", None)
         thresholds = {"edge_min": 0.35, "best_min": 0.55}
 
-        if edge < 0.35:
-            return TradeSignal(
-                symbol=snap.symbol,
-                direction="none",
-                trade_confidence=0.0,
-                edge_confidence=edge,
-                setup_type="none",
-                reason=f"No setup | ranging mid-zone (edge={edge:.2f})",
-                snapshot=snap,
-                debug_scores=scores,
-                rejected_reasons=["edge_below_threshold"],
-                thresholds_snapshot=thresholds,
-            )
+        if regime == "high_vol_ranging":
+            lh = build_liquidity_hunt_signal(snap, regime, self.settings)
+            if lh:
+                lh.edge_confidence = max(edge, getattr(lh, "edge_confidence", 0.0), best)
+                lh.debug_scores = scores
+                lh.thresholds_snapshot = thresholds
+                return lh
 
-        best_dir = "long" if long_s > short_s else "short"
-        best = max(long_s, short_s)
-
-        if best < 0.55:
-            return TradeSignal(
-                symbol=snap.symbol,
-                direction="none",
-                trade_confidence=0.0,
-                edge_confidence=max(edge, best),
-                setup_type="none",
-                reason=f"Range watch | best={best:.2f} edge={edge:.2f}",
-                snapshot=snap,
-                debug_scores=scores,
-                rejected_reasons=["score_below_threshold"],
-                thresholds_snapshot=thresholds,
-            )
-
-        trade_conf = best * 0.75
-        if best_dir == "long":
-            return TradeSignal(
-                symbol=snap.symbol,
-                direction="long",
-                confidence=trade_conf,
-                trade_confidence=trade_conf,
-                edge_confidence=best,
-                setup_type="range_long",
-                reason=f"Range long | edge={edge:.2f} score={best:.2f}",
-                snapshot=snap,
-                debug_scores=scores,
-                rejected_reasons=[],
-                thresholds_snapshot=thresholds,
-            )
+        if regime in ("high_vol_ranging", "low_vol_ranging"):
+            mr = build_mean_reversion_signal(snap, regime, self.settings)
+            if mr:
+                mr.edge_confidence = max(edge, getattr(mr, "edge_confidence", 0.0), best)
+                mr.debug_scores = scores
+                mr.thresholds_snapshot = thresholds
+                return mr
 
         return TradeSignal(
             symbol=snap.symbol,
-            direction="short",
-            confidence=trade_conf,
-            trade_confidence=trade_conf,
-            edge_confidence=best,
-            setup_type="range_short",
-            reason=f"Range short | edge={edge:.2f} score={best:.2f}",
+            direction="none",
+            trade_confidence=0.0,
+            edge_confidence=max(edge, best),
+            setup_type="none",
+            reason=(
+                "Range regime but no LH/MR trigger | "
+                f"edge={edge:.2f} best={best:.2f}"
+            ),
             snapshot=snap,
             debug_scores=scores,
-            rejected_reasons=[],
+            rejected_reasons=["no_range_strategy_triggered"],
             thresholds_snapshot=thresholds,
         )
 
@@ -206,11 +180,11 @@ class SignalEngine:
         signal = self.decide(snap, regime_signal)
 
         if signal and signal.reason:
-            reason_prefix = (
-                "range"
-                if "range" in (signal.setup_type or "") or "range" in snap.regime
-                else "trending"
-            )
+            reason_prefix = "unknown"
+            if snap.regime in ("high_vol_ranging", "low_vol_ranging"):
+                reason_prefix = "range"
+            elif snap.regime == "trending":
+                reason_prefix = "trending"
             signal.reason = (
                 f"[{reason_prefix}] {signal.reason} | regime={snap.regime} | {regime_signal.reason}"
             )
