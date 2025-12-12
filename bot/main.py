@@ -377,18 +377,24 @@ def format_notification(signal, threshold: float = 0.8):
 
 
 def print_signal_dashboard(signals):
+    print(render_signal_dashboard(signals))
+
+
+def render_signal_dashboard(signals) -> str:
     if not signals:
-        print("暂无交易信号。")
-        return
+        return "暂无交易信号。"
 
-    print("====== 多币种概览 ======")
+    lines = ["====== 多币种概览 ======"]
     for sig in signals:
-        print(format_signal_brief(sig))
+        lines.append(format_signal_brief(sig))
 
-    print("\n====== 详细解析 ======")
+    lines.append("")
+    lines.append("====== 详细解析 ======")
     for sig in signals:
-        print(format_signal_detail(sig))
-        print("-------------------")
+        lines.append(format_signal_detail(sig))
+        lines.append("-------------------")
+
+    return "\n".join(lines)
 
 
 def main():
@@ -425,17 +431,14 @@ def main():
     print_signal_dashboard(signals)
 
     if notifier.has_channels() and signals:
-        messages = [
-            format_notification(sig, threshold=base_settings.signal_confidence_threshold)
-            for sig in signals
-        ]
+        dashboard_text = render_signal_dashboard(signals)
         execution_mode = any(
             sig.direction != "none"
             and sig.confidence >= base_settings.signal_confidence_threshold
             for sig in signals
         )
         results = notifier.send(
-            message="\n\n".join(messages),
+            message=dashboard_text,
             title="Hyperliquid Trade Signal",
             include_ftqq=execution_mode,
         )
