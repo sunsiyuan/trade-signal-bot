@@ -131,3 +131,17 @@ def test_is_actionable_classification():
         "NONE",
         "NONE",
     )
+
+
+def test_settings_pick_up_telegram_env(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_ACTION_BOT_TOKEN", "action-token")
+    monkeypatch.setenv("TELEGRAM_ACTION_CHAT_ID", "action-chat")
+    monkeypatch.setenv("TELEGRAM_SUMMARY_BOT_TOKEN", "summary-token")
+    monkeypatch.setenv("TELEGRAM_SUMMARY_CHAT_ID", "summary-chat")
+
+    settings = Settings()
+
+    assert settings.telegram_action_token == "action-token"
+    assert settings.telegram_action_chat_id == "action-chat"
+    assert settings.telegram_summary_token == "summary-token"
+    assert settings.telegram_summary_chat_id == "summary-chat"
