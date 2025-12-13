@@ -364,7 +364,7 @@ def main():
     )
 
     action_token = base_settings.telegram_action_token
-    action_chat = base_settings.telegram_chat_id
+    action_chat = base_settings.telegram_action_chat_id
     
     summary_token = base_settings.telegram_summary_token
     summary_chat = base_settings.telegram_summary_chat_id
