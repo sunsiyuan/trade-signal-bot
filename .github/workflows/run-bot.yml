@@ -3,7 +3,7 @@ name: Run Hyperliquid Basic Signal Bot
 on:
   workflow_dispatch: {}
   schedule:
-    - cron: "2-59/5 * * * *"
+    - cron: "*/5 * * * *"
 
 concurrency:
   group: trade-signal-${{ github.ref }}
@@ -24,13 +24,6 @@ jobs:
       WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
 
     steps:
-      - name: Jitter delay (0–30s)
-        shell: bash
-        run: |
-          delay=$((RANDOM % 31))
-          echo "Jitter delay: ${delay}s"
-          sleep "${delay}"
-
       - name: Checkout repo
         uses: actions/checkout@v4
 
