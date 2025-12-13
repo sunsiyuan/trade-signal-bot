@@ -26,6 +26,8 @@ python -m bot.main
 
 如果希望在本地或 GitHub Actions 运行后推送到 Telegram、微信 Server酱或自定义 webhook，预先设置对应的环境变量即可：
 
+- `TELEGRAM_ACTION_BOT_TOKEN`、`TELEGRAM_ACTION_CHAT_ID`
+- `TELEGRAM_SUMMARY_BOT_TOKEN`、`TELEGRAM_SUMMARY_CHAT_ID`
 - `TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`
 - `FTQQ_KEY`
 - `WEBHOOK_URL`
