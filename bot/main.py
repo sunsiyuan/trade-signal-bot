@@ -318,8 +318,6 @@ def main():
 
     engine = SignalEngine(base_settings)
     notifier = Notifier(
-        telegram_token=None,
-        telegram_chat_id=None,
         ftqq_key=base_settings.ftqq_key,
         webhook_url=base_settings.webhook_url,
     )
@@ -371,21 +369,21 @@ def main():
 
     results = {}
     if action_message and action_token and action_chat:
-        results["telegram_action"] = notifier.send_telegram_with(
-            action_token, action_chat, action_message
+        results["telegram_action"] = notifier.send_telegram(
+            action_message, token=action_token, chat_id=action_chat
         )
 
     if summary_token and summary_chat:
-        results["telegram_summary"] = notifier.send_telegram_with(
-            summary_token, summary_chat, summary_message
+        results["telegram_summary"] = notifier.send_telegram(
+            summary_message, token=summary_token, chat_id=summary_chat
         )
 
-    if execute_message and notifier.has_channels() and (notifier.ftqq_key or notifier.webhook_url):
+    if execute_message and (notifier.ftqq_key or notifier.webhook_url):
         results.update(
             notifier.send(
-                message=action_message,
+                message=execute_message,
                 title="交易执行信号",
-                include_ftqq=True,
+                include_ftqq=bool(notifier.ftqq_key),
             )
         )
 

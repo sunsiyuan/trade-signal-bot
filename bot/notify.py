@@ -56,15 +56,28 @@ class Notifier:
 
         return results
 
-    def send_telegram(self, message: str) -> bool:
+    def send_telegram(
+        self,
+        message: str,
+        *,
+        token: Optional[str] = None,
+        chat_id: Optional[str] = None,
+    ) -> bool:
         """Send a message via Telegram bot.
 
-        Configure ``telegram_token`` and ``telegram_chat_id`` before calling.
+        ``token`` and ``chat_id`` can be supplied per call. When omitted,
+        the notifier's default credentials are used.
         """
 
-        url = f"https://api.telegram.org/bot{self.telegram_token}/sendMessage"
+        final_token = token or self.telegram_token
+        final_chat_id = chat_id or self.telegram_chat_id
+
+        if not final_token or not final_chat_id:
+            return False
+
+        url = f"https://api.telegram.org/bot{final_token}/sendMessage"
         payload = {
-            "chat_id": self.telegram_chat_id,
+            "chat_id": final_chat_id,
             "text": message,
             "parse_mode": "Markdown",
             "disable_web_page_preview": True,
@@ -78,14 +91,15 @@ class Notifier:
         return response.ok
 
     def send_telegram_with(self, token: str, chat_id: str, message: str) -> bool:
-        """Send a Telegram message using explicit credentials."""
+        """Send a Telegram message using explicit credentials without mutating state."""
 
-        self.telegram_token = token
-        self.telegram_chat_id = chat_id
-        return self.send_telegram(message)
+        return self.send_telegram(message, token=token, chat_id=chat_id)
 
     def send_wechat_ftqq(self, title: str, message: str) -> bool:
         """Send a notification through Server酱 (ftqq)."""
+
+        if not self.ftqq_key:
+            return False
 
         url = f"https://sctapi.ftqq.com/{self.ftqq_key}.send"
         payload = {"title": title, "desp": message}
@@ -99,6 +113,9 @@ class Notifier:
 
     def send_webhook(self, message: str) -> bool:
         """Send a generic webhook notification with a simple JSON payload."""
+
+        if not self.webhook_url:
+            return False
 
         payload = {"text": message}
 
