@@ -5,6 +5,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional
 
 from .config import Settings
+from .oi_history import load_oi_history, _parse_timestamp
 from .indicators import ema, compute_rsi, macd, atr, detect_trend
 from .models import (
     TimeframeIndicators,
@@ -194,24 +195,58 @@ class HyperliquidDataClient:
                 limit=48,
             )
         except Exception:
-            return None
+            history = None
 
-        if not history:
-            return None
+        def _compute_change(previous: Optional[float]) -> Optional[float]:
+            if previous is None or previous <= 0:
+                return None
+            return (current_oi - previous) / previous * 100
 
-        # 取最早一条作为 24h 前参考值
-        earliest = history[0] if isinstance(history, list) else history
-        if isinstance(history, list) and history:
-            earliest = sorted(
-                history,
-                key=lambda x: x.get("timestamp", 0) if isinstance(x, dict) else 0,
-            )[0]
+        if history:
+            # 取最早一条作为 24h 前参考值
+            earliest = history[0] if isinstance(history, list) else history
+            if isinstance(history, list) and history:
+                earliest = sorted(
+                    history,
+                    key=lambda x: x.get("timestamp", 0) if isinstance(x, dict) else 0,
+                )[0]
 
-        previous_oi = self._extract_open_interest(earliest)
-        if previous_oi is None or previous_oi <= 0:
-            return None
+            previous_oi = self._extract_open_interest(earliest)
+            change = _compute_change(previous_oi)
+            if change is not None:
+                return change
 
-        return (current_oi - previous_oi) / previous_oi * 100
+        # Fallback: try reading from hourly CSV snapshots if available.
+        history_rows = load_oi_history(self.settings.symbol, hours=30)
+        if len(history_rows) >= 2:
+            target_ts = (
+                datetime.now(timezone.utc)
+                .replace(minute=0, second=0, microsecond=0)
+                - timedelta(hours=24)
+            )
+
+            fallback_row = None
+            # rows are sorted ascending; iterate from tail to find the latest row
+            # that is at least 24h old so the delta reflects a full-day change.
+            for row in reversed(history_rows):
+                ts = _parse_timestamp(str(row.get("timestamp_utc", "")))
+                if ts is None:
+                    continue
+                if ts <= target_ts:
+                    fallback_row = row
+                    break
+
+            if fallback_row is None:
+                return None
+
+            try:
+                previous_oi = float(fallback_row.get("oi", "nan"))
+                if math.isfinite(previous_oi):
+                    return _compute_change(previous_oi)
+            except (TypeError, ValueError):
+                return None
+
+        return None
 
     def fetch_all_ohlcv(self) -> Dict[str, pd.DataFrame]:
         s = self.settings

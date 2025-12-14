@@ -11,6 +11,9 @@ jobs:
   run-bot:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+
     env:
       TELEGRAM_ACTION_BOT_TOKEN: ${{ secrets.TELEGRAM_ACTION_BOT_TOKEN }}
       TELEGRAM_ACTION_CHAT_ID: ${{ secrets.TELEGRAM_ACTION_CHAT_ID }}
@@ -24,6 +27,8 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
 
       - name: Set up Python
@@ -40,6 +45,18 @@ jobs:
       - name: Run basic signal bot
         run: |
           python -m bot.main
+
+      - name: Collect hourly OI snapshot
+        run: |
+          python -m bot.oi_history
+
+      - name: Push hourly snapshot updates
+        run: |
+          if git log --oneline origin/${{ github.ref_name }}..HEAD | grep -q .; then
+            git push origin HEAD:${{ github.ref_name }}
+          else
+            echo "No new commits to push."
+          fi
 
       - name: Notify on failure
         if: failure()
