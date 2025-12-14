@@ -235,6 +235,28 @@ class HyperliquidDataClient:
         except Exception as exc:  # pragma: no cover - network failure fallback
             ticker_error = str(exc)
 
+        def _first_finite(candidates):
+            for candidate in candidates:
+                if candidate is None:
+                    continue
+                value = self._to_float(candidate, default=float("nan"))
+                if math.isfinite(value):
+                    return value
+            return None
+
+        mark_price = None
+        if isinstance(ticker, dict):
+            mark_price = _first_finite(
+                [
+                    ticker.get("mark"),
+                    ticker.get("last"),
+                    ticker_info.get("markPrice"),
+                    ticker_info.get("markPx"),
+                    ticker_info.get("last"),
+                    ticker_info.get("lastPrice"),
+                ]
+            )
+
         funding_entry = None
         funding_source = None
         raw_funding = None
@@ -311,6 +333,10 @@ class HyperliquidDataClient:
             {"price": _format_price(p), "size": float(s)} for p, s in bids_raw[:10]
         ]
 
+        if mark_price is None and orderbook_asks and orderbook_bids:
+            mid = (orderbook_asks[0]["price"] + orderbook_bids[0]["price"]) / 2
+            mark_price = mid
+
         liquidity_comment = "asks>bids" if sum(a["size"] for a in orderbook_asks) > sum(
             b["size"] for b in orderbook_bids
         ) else "bids>=asks"
@@ -338,6 +364,7 @@ class HyperliquidDataClient:
             ask_to_bid_ratio=ask_to_bid_ratio,
             has_large_ask_wall=has_large_ask_wall,
             has_large_bid_wall=has_large_bid_wall,
+            mark_price=mark_price,
         )
 
     def _build_tf_indicators(self, df: pd.DataFrame, timeframe: str) -> TimeframeIndicators:

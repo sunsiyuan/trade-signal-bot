@@ -66,6 +66,7 @@ class DerivativeIndicators:
     open_interest: float            # 当前 OI
     oi_change_24h: Optional[float]  # 最近24h OI 变化 %，拉取失败时为 None
     oi_change_pct: Optional[float] = None  # 近几根K的 OI 变化百分比
+    mark_price: Optional[float] = None      # 最新标记价格
     orderbook_asks: List[Dict] = field(default_factory=list)  # 顶部卖单墙 [{price, size}, ...]
     orderbook_bids: List[Dict] = field(default_factory=list)  # 底部买单墙
     liquidity_comment: str = ""     # 对流动性的简单文字判断（可选）

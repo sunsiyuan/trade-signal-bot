@@ -3,7 +3,7 @@ import json
 import os
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import ccxt
 
@@ -71,6 +71,12 @@ def _format_oi(value: float) -> str:
     return f"{value:,.0f}"
 
 
+def _format_macd_hist(value: float) -> str:
+    if value is None:
+        return "NA"
+    return f"{value:.4f}"
+
+
 def _format_levels(signal) -> str:
     if signal.direction == "none":
         return "-"
@@ -95,11 +101,20 @@ def _format_levels(signal) -> str:
     return " | ".join(parts) if parts else "-"
 
 
-def _extract_rsi_4h(snapshot) -> str:
+def _extract_rsi_15m(snapshot) -> str:
     try:
-        return f"{snapshot.tf_4h.rsi6:.1f}"
+        return f"{snapshot.tf_15m.rsi6:.1f}"
     except Exception:
         return "NA"
+
+
+def _extract_mark_price(snapshot) -> Optional[float]:
+    if snapshot is None:
+        return None
+    try:
+        return getattr(snapshot.deriv, "mark_price", None)
+    except Exception:
+        return None
 
 
 def _extract_gate(signal) -> str:
@@ -168,7 +183,9 @@ def is_actionable(signal, snapshot, settings: Settings):
 
 
 def format_action_line(symbol, snapshot, signal, action_level: str, bias: str) -> str:
-    price = _format_price(getattr(snapshot.tf_15m, "close", None) if snapshot else None)
+    mark_price = _extract_mark_price(snapshot)
+    fallback_price = getattr(snapshot.tf_15m, "close", None) if snapshot else None
+    price = _format_price(mark_price if mark_price is not None else fallback_price)
     regime_icon, regime_cn = _regime_display(
         getattr(snapshot, "regime", ""),
         getattr(snapshot, "market_mode", ""),
@@ -189,8 +206,10 @@ def format_action_line(symbol, snapshot, signal, action_level: str, bias: str) -
     strat = _setup_code(getattr(signal, "setup_type", "none"))
     trade_conf = _format_pct(signal.trade_confidence or 0.0)
     edge_conf = _format_pct(signal.edge_confidence or 0.0)
-    rsi4h = _extract_rsi_4h(snapshot) if snapshot else "NA"
-    oi = _format_oi(getattr(snapshot.deriv, "open_interest", None) if snapshot else None)
+    rsi_15m = _extract_rsi_15m(snapshot) if snapshot else "NA"
+    macd_hist_4h = _format_macd_hist(
+        getattr(snapshot.tf_4h, "macd_hist", None) if snapshot else None
+    )
     levels = _format_levels(signal)
     risk = (
         f"Core {signal.core_position_pct * 100:.1f}% + "
@@ -206,13 +225,15 @@ def format_action_line(symbol, snapshot, signal, action_level: str, bias: str) -
         f"{symbol} | 💰 {price} | {regime_icon}{regime_cn} | "
         f"{action_icon} {action_cn}{bias_block} | "
         f"Strat {strat} | Trade {trade_conf} / Edge {edge_conf} | "
-        f"4H RSI {rsi4h} | OI {oi} | Levels {levels} | "
+        f"15m RSI6 {rsi_15m} | 4H MACD hist {macd_hist_4h} | Levels {levels} | "
         f"Risk {risk} | Why {why}"
     )
 
 
 def format_summary_line(symbol, snapshot, signal) -> str:
-    price = _format_price(getattr(snapshot.tf_15m, "close", None) if snapshot else None)
+    mark_price = _extract_mark_price(snapshot)
+    fallback_price = getattr(snapshot.tf_15m, "close", None) if snapshot else None
+    price = _format_price(mark_price if mark_price is not None else fallback_price)
     regime_icon, regime_cn = _regime_display(
         getattr(snapshot, "regime", ""),
         getattr(snapshot, "market_mode", ""),
@@ -222,14 +243,16 @@ def format_summary_line(symbol, snapshot, signal) -> str:
     decision_cn = _decision_cn(signal.direction)
     trade_conf = _format_pct(signal.trade_confidence or 0.0)
     edge_conf = _format_pct(signal.edge_confidence or 0.0)
-    rsi4h = _extract_rsi_4h(snapshot) if snapshot else "NA"
-    oi = _format_oi(getattr(snapshot.deriv, "open_interest", None) if snapshot else None)
+    rsi_15m = _extract_rsi_15m(snapshot) if snapshot else "NA"
+    macd_hist_4h = _format_macd_hist(
+        getattr(snapshot.tf_4h, "macd_hist", None) if snapshot else None
+    )
     setup = _setup_code(getattr(signal, "setup_type", "none"))
 
     return (
         f"{symbol} | 💰 {price} | {regime_icon}{regime_cn} | "
         f"{decision_icon} {decision_cn} | Trade {trade_conf} / Edge {edge_conf} | "
-        f"4H RSI {rsi4h} | OI {oi} | Setup {setup}"
+        f"15m RSI6 {rsi_15m} | 4H MACD hist {macd_hist_4h} | Setup {setup}"
     )
 
 
