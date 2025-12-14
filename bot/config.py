@@ -103,7 +103,7 @@ class Settings:
     regime: dict = field(
         default_factory=lambda: {
             "main_tf": "1h",
-            "trend_ma_angle_min": 0.0015,
+            "trend_ma_angle_min": 0.0013,
             "min_trend_ma_angle": 0.001,
             "high_vol_atr_rel": 0.015,
             "low_vol_atr_rel": 0.006,
@@ -117,10 +117,10 @@ class Settings:
     mean_reversion: dict = field(
         default_factory=lambda: {
             "tf": "1h",
-            "rsi_oversold": 28,
-            "rsi_overbought": 72,
-            "atr_dev_mult": 0.6,
-            "min_oi_change_pct": 1.0,
+            "rsi_oversold": 30,
+            "rsi_overbought": 70,
+            "atr_dev_mult": 0.55,
+            "min_oi_change_pct": 1.5,
             "tp_to_sl_ratio": 1.5,
             "core_position_pct": 0.5,
             "add_position_pct": 0.25,
@@ -147,7 +147,7 @@ class Settings:
             "small_body_lookback": 8,
             "wall_depth_bps": 30,
             "wall_size_threshold": 3.0,
-            "post_spike_candle_count": 3,
+            "post_spike_candle_count": 2,
             "sl_buffer_pct": 0.0015,
             "core_position_pct": 0.5,
             "add_position_pct": 0.25,
@@ -181,8 +181,8 @@ class Settings:
     # Notification thresholds
     notification: dict = field(
         default_factory=lambda: {
-            "execute_trade_conf": 0.75,
-            "watch_trade_conf": 0.55,
+            "execute_trade_conf": 0.70,
+            "watch_trade_conf": 0.60,
             "watch_edge_conf": 0.80,
             "near_miss_delta": 0.05,
         }
