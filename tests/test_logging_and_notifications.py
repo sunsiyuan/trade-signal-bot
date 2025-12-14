@@ -82,7 +82,7 @@ def test_build_signal_event_serializes():
     signal = _make_signal(snapshot)
     event = build_signal_event(snapshot, signal, Settings(), exchange_id="test")
 
-    assert event["schema_version"] == "2.0"
+    assert event["schema_version"] == "2.1"
     assert event["signal"]["thresholds_snapshot"]
     # Ensure JSON serialization does not raise
     json.dumps(event)

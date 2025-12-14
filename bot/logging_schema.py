@@ -13,7 +13,7 @@ from .models import MarketSnapshot
 from .signal_engine import TradeSignal
 
 
-SCHEMA_VERSION = "2.0"
+SCHEMA_VERSION = "2.1"
 
 
 def _safe_iso(dt: Optional[datetime]) -> Optional[str]:
@@ -212,6 +212,7 @@ def build_signal_event(
             "setup_type": signal.setup_type,
             "trade_confidence": signal.trade_confidence,
             "edge_confidence": signal.edge_confidence,
+            "conditional_plan": signal.conditional_plan or {},
             "entry": signal.entry,
             "entry_range": signal.entry_range or [],
             "tp": {

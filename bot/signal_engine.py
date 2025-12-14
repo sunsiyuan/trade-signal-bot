@@ -4,6 +4,7 @@ from typing import Optional, List, Dict
 
 from .config import Settings
 from .models import MarketSnapshot, Direction
+from .conditional_plan import build_conditional_plan
 from .regime_detector import detect_regime, RegimeSignal
 from .strategy_trend_following import build_trend_following_signal
 
@@ -40,6 +41,7 @@ class TradeSignal:
     debug_scores: Optional[Dict] = None
     rejected_reasons: Optional[List[str]] = None
     thresholds_snapshot: Optional[Dict] = None
+    conditional_plan: Optional[Dict] = None
 
     def __post_init__(self):
         # 保持与旧 confidence 字段的兼容性
@@ -230,6 +232,10 @@ class SignalEngine:
         snap.regime_reason = regime_signal.reason
 
         signal = self.decide(snap, regime_signal)
+
+        conditional_plan = build_conditional_plan(signal, snap, self.settings)
+        if conditional_plan:
+            signal.conditional_plan = conditional_plan
 
         if signal and signal.reason:
             reason_prefix = "unknown"
