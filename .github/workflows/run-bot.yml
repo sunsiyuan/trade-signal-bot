@@ -3,7 +3,7 @@ name: Run Hyperliquid Basic Signal Bot
 on:
   workflow_dispatch: {}
   schedule:
-    - cron: "0,5,10,15,20,25,30,35,40,45,50,55 * * * *"
+    - cron: "*/5 * * * *"
 
 concurrency:
   group: trade-signal-${{ github.ref }}
@@ -27,14 +27,16 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: requirements.txt
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: Run basic signal bot
