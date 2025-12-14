@@ -145,6 +145,10 @@ def _top_reasons(signal, action_level: str) -> str:
 
 
 def _bias_from_scores(signal) -> str:
+    if getattr(signal, "conditional_plan", None):
+        plans = signal.conditional_plan.get("plans") or []
+        if plans:
+            return plans[0].get("direction", "NONE").upper()
     if signal.direction and signal.direction != "none":
         return signal.direction.upper()
     scores = signal.debug_scores or {}
@@ -166,6 +170,7 @@ def is_actionable(signal, snapshot, settings: Settings):
 
     trade_conf = signal.trade_confidence or 0.0
     edge_conf = signal.edge_confidence or 0.0
+    has_conditional_plan = bool(getattr(signal, "conditional_plan", None))
 
     execute = signal.direction != "none" and trade_conf >= execute_trade_conf
     watch = (
@@ -173,6 +178,7 @@ def is_actionable(signal, snapshot, settings: Settings):
         or (signal.setup_type != "none" and edge_conf >= watch_edge_conf)
         or (trade_conf >= execute_trade_conf - near_miss_delta
             and edge_conf >= watch_edge_conf)
+        or has_conditional_plan
     )
 
     if execute:
@@ -294,6 +300,22 @@ def format_signal_detail(signal):
         f"• 4H RSI6: {snap.tf_4h.rsi6:.2f} | 1H RSI6: {snap.tf_1h.rsi6:.2f} | 15m RSI6: {snap.tf_15m.rsi6:.2f}",
         f"• OI: {snap.deriv.open_interest:,.2f} | Funding: {snap.deriv.funding * 100:.4f}%",
     ]
+
+    conditional = getattr(signal, "conditional_plan", None) or {}
+    plans = conditional.get("plans") or []
+    if conditional:
+        lines.append("")
+        validity = conditional.get("validity", {})
+        lines.append("⏳ 4H Conditional Plan")
+        lines.append(f"Valid until: {validity.get('valid_until_utc', 'N/A')}")
+        for idx, plan in enumerate(plans, start=1):
+            entry_zone = plan.get("entry_zone", [])
+            lines.append(
+                f"Plan {idx}: {plan.get('plan_type', '')} {plan.get('direction', '')} | "
+                f"Zone {entry_zone} | Logic: {plan.get('entry_logic', '')} | "
+                f"SL {plan.get('risk', {}).get('sl', 'N/A')} | TP {plan.get('risk', {}).get('tp', [])} | "
+                f"Conf if triggered {plan.get('confidence_if_triggered', 0)}"
+            )
 
     return "\n".join(lines)
 
