@@ -115,10 +115,10 @@ class Settings:
     mean_reversion: dict = field(
         default_factory=lambda: {
             "tf": "1h",
-            "rsi_oversold": 12,
-            "rsi_overbought": 88,
-            "atr_dev_mult": 1.2,
-            "min_oi_change_pct": 3.0,
+            "rsi_oversold": 28,
+            "rsi_overbought": 72,
+            "atr_dev_mult": 0.6,
+            "min_oi_change_pct": 1.0,
             "tp_to_sl_ratio": 1.5,
             "core_position_pct": 0.5,
             "add_position_pct": 0.25,
@@ -161,6 +161,7 @@ class Settings:
         }
     )
 
+    # Trend following strategy
     trend_following: dict = field(
         default_factory=lambda: {
             "high_conf_bonus": 0.15,

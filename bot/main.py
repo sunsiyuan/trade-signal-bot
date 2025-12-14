@@ -44,10 +44,10 @@ def _regime_display(regime: str, market_mode: str, trend_label: str) -> Tuple[st
 
 def _setup_code(setup_type: str) -> str:
     mapping = {
-        "trend_long": "趋势跟随TF",
-        "trend_short": "趋势跟随TF",
-        "mean_reversion": "均值回归MR",
-        "liquidity_hunt": "流动性狩猎LH",
+        "trend_long": "趋势跟随(TF)",
+        "trend_short": "趋势跟随(TF)",
+        "mean_reversion": "均值回归(MR)",
+        "liquidity_hunt": "流动性狩猎(LH)",
         "none": "无",
     }
     return mapping.get(setup_type, setup_type or "none")
