@@ -1,2 +1,3 @@
 timestamp_utc,exchange,symbol,oi,funding_rate,mark_price
 2025-12-14T17:00:00+00:00,hyperliquid,HYPE/USDC:USDC,31882598.26,1.25e-05,28.9905
+2025-12-14T18:00:00+00:00,hyperliquid,HYPE/USDC:USDC,31888899.539999995,1.25e-05,28.9315

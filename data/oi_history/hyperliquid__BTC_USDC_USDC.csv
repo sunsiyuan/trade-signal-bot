@@ -1,2 +1,3 @@
 timestamp_utc,exchange,symbol,oi,funding_rate,mark_price
 2025-12-14T17:00:00+00:00,hyperliquid,BTC/USDC:USDC,23511.88178,6.3204e-06,88696.5
+2025-12-14T18:00:00+00:00,hyperliquid,BTC/USDC:USDC,23471.36002,1.9556e-06,88722.5

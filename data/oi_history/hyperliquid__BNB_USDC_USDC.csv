@@ -1,2 +1,3 @@
 timestamp_utc,exchange,symbol,oi,funding_rate,mark_price
 2025-12-14T17:00:00+00:00,hyperliquid,BNB/USDC:USDC,46943.522,1.25e-05,881.545
+2025-12-14T18:00:00+00:00,hyperliquid,BNB/USDC:USDC,46990.868,1.25e-05,882.275

@@ -1,2 +1,3 @@
 timestamp_utc,exchange,symbol,oi,funding_rate,mark_price
 2025-12-14T17:00:00+00:00,hyperliquid,SOL/USDC:USDC,3376945.540000001,1.19067e-05,129.745
+2025-12-14T18:00:00+00:00,hyperliquid,SOL/USDC:USDC,3377866.14,-1.7562e-06,129.935
