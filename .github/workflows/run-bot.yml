@@ -2,8 +2,6 @@ name: Run Hyperliquid Basic Signal Bot
 
 on:
   workflow_dispatch: {}
-  schedule:
-    - cron: "*/5 * * * *"
 
 concurrency:
   group: trade-signal-${{ github.ref }}
