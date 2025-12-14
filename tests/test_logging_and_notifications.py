@@ -3,7 +3,12 @@ from datetime import datetime, timedelta, timezone
 
 from bot.config import Settings
 from bot.logging_schema import build_signal_event
-from bot.main import format_action_line, format_summary_line, is_actionable
+from bot.main import (
+    format_action_line,
+    format_conditional_plan_line,
+    format_summary_line,
+    is_actionable,
+)
 from bot.models import DerivativeIndicators, MarketSnapshot, TimeframeIndicators
 from bot.signal_engine import TradeSignal
 
@@ -131,6 +136,30 @@ def test_is_actionable_classification():
         "NONE",
         "NONE",
     )
+
+
+def test_format_conditional_plan_line():
+    snapshot = _make_snapshot()
+    signal = _make_signal(snapshot)
+    signal.conditional_plan = {
+        "validity": {"valid_until_utc": "2024-01-01T00:00:00"},
+        "plans": [
+            {
+                "plan_type": "WAIT_PULLBACK",
+                "direction": "long",
+                "entry_zone": [99.0, 100.0],
+                "entry_logic": "test logic",
+                "risk": {"sl": 98.0, "tp": [101.0, 102.0]},
+                "confidence_if_triggered": 0.6,
+            }
+        ],
+    }
+
+    line = format_conditional_plan_line(signal)
+
+    assert "WAIT_PULLBACK" in line
+    assert "99.0000-100.0000" in line
+    assert "触发信心 60%" in line
 
 
 def test_settings_pick_up_telegram_env(monkeypatch):

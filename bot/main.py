@@ -320,6 +320,58 @@ def format_signal_detail(signal):
     return "\n".join(lines)
 
 
+def format_conditional_plan_line(signal) -> str:
+    plan = getattr(signal, "conditional_plan", None) or {}
+    plans = plan.get("plans") or []
+    if not plans:
+        return ""
+
+    validity = plan.get("validity", {})
+    valid_until = validity.get("valid_until_utc", "N/A")
+
+    lines = [f"{signal.symbol} 条件计划 | 有效期至 {valid_until}"]
+
+    for idx, item in enumerate(plans, start=1):
+        entry_zone = item.get("entry_zone") or []
+        if len(entry_zone) >= 2:
+            entry_text = f"{entry_zone[0]:.4f}-{entry_zone[1]:.4f}"
+        elif entry_zone:
+            entry_text = f"{entry_zone[0]:.4f}"
+        else:
+            entry_text = "N/A"
+
+        risk = item.get("risk", {}) or {}
+        sl = risk.get("sl")
+        sl_text = f"{sl:.4f}" if isinstance(sl, (int, float)) else (sl or "N/A")
+        tps = risk.get("tp") or []
+        if tps:
+            tp_text = "/".join(
+                f"{tp:.0f}" if abs(tp) >= 100 else f"{tp:.4f}" for tp in tps
+            )
+        else:
+            tp_text = "N/A"
+
+        confidence = item.get("confidence_if_triggered", 0.0)
+
+        lines.append(
+            " ".join(
+                filter(
+                    None,
+                    [
+                        f"计划{idx}: {item.get('plan_type', '')} {item.get('direction', '')}",
+                        f"区间 {entry_text}",
+                        f"逻辑 {item.get('entry_logic', '')}",
+                        f"SL {sl_text}",
+                        f"TP {tp_text}",
+                        f"触发信心 {_format_pct(confidence)}",
+                    ],
+                )
+            )
+        )
+
+    return "\n".join(lines)
+
+
 def render_signal_dashboard(signals) -> str:
     if not signals:
         return "暂无交易信号。"
@@ -382,6 +434,7 @@ def main():
     summary_lines = []
     action_lines = []
     execute_lines = []
+    conditional_lines = []
 
     for sig in signals:
         summary_lines.append(format_summary_line(sig.symbol, sig.snapshot, sig))
@@ -395,6 +448,10 @@ def main():
                 format_action_line(sig.symbol, sig.snapshot, sig, action_level, bias)
             )
 
+        conditional_line = format_conditional_plan_line(sig)
+        if conditional_line:
+            conditional_lines.append(conditional_line)
+
     summary_message = "\n".join([beijing_line] + summary_lines)
 
     print(summary_message)
@@ -405,10 +462,13 @@ def main():
     execute_message = (
         "\n".join([beijing_line] + execute_lines) if execute_lines else None
     )
+    conditional_message = (
+        "\n\n".join([beijing_line] + conditional_lines) if conditional_lines else None
+    )
 
     action_token = base_settings.telegram_action_token
     action_chat = base_settings.telegram_action_chat_id
-    
+
     summary_token = base_settings.telegram_summary_token
     summary_chat = base_settings.telegram_summary_chat_id
 
@@ -421,6 +481,11 @@ def main():
     if summary_token and summary_chat:
         results["telegram_summary"] = notifier.send_telegram(
             summary_message, token=summary_token, chat_id=summary_chat
+        )
+
+    if conditional_message and summary_token and summary_chat:
+        results["telegram_conditional"] = notifier.send_telegram(
+            conditional_message, token=summary_token, chat_id=summary_chat
         )
 
     if execute_message and (notifier.ftqq_key or notifier.webhook_url):
