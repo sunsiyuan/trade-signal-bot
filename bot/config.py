@@ -18,13 +18,15 @@ class Settings:
     # 趋势跟随策略基础阈值
     min_confidence: float = 0.3
 
-    # 要同时跟踪的合约列表（默认为 HYPE、BTC、ETH、SOL、ZEC）
+    # 要同时跟踪的合约列表（默认为 HYPE、BTC、ETH、SOL、BNB、AAVE、ZEC）
     tracked_symbols: List[str] = field(
         default_factory=lambda: [
             "HYPE/USDC:USDC",
             "BTC/USDC:USDC",
             "ETH/USDC:USDC",
             "SOL/USDC:USDC",
+            "BNB/USDC:USDC",
+            "AAVE/USDC:USDC",
             "ZEC/USDC:USDC",
         ]
     )
