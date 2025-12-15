@@ -27,19 +27,18 @@ def _decision_cn(direction: str) -> str:
 
 
 def _regime_display(regime: str, trend_label: str) -> Tuple[str, str]:
-    mapping = {
-        "trending": "趋势",
-        "high_vol_ranging": "高波动震荡",
-        "low_vol_ranging": "低波动震荡",
-    }
-    regime_cn = mapping.get(regime, regime or "unknown")
-    if regime_cn == "趋势":
+    regime_display = regime or "unknown"
+    if regime_display == "trending":
         if trend_label == "up":
             return "🟢", "上涨趋势"
         if trend_label == "down":
             return "🔻", "下跌趋势"
         return "🟣", "趋势态势（方向未定）"
-    return "⚖️", regime_cn
+    if regime_display == "high_vol_ranging":
+        return "🌪️", "高波动震荡"
+    if regime_display == "low_vol_ranging":
+        return "🌤️", "低波动震荡"
+    return "❔", "未知态势"
 
 
 def _setup_code(setup_type: str) -> str:
