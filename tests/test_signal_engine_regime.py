@@ -2,7 +2,7 @@ from datetime import datetime
 
 from bot.config import Settings
 from bot.models import TimeframeIndicators, DerivativeIndicators, MarketSnapshot
-from bot.regime_detector import RegimeSignal
+from bot.regime_detector import RegimeSignal, detect_regime
 from bot.signal_engine import SignalEngine, TradeSignal
 
 
@@ -79,6 +79,37 @@ def make_deriv(
         bid_wall_size=bid_wall_size,
         has_large_ask_wall=has_large_ask_wall,
         has_large_bid_wall=has_large_bid_wall,
+    )
+
+
+def make_regime_snapshot(ma25_history, rsi6_history) -> MarketSnapshot:
+    tf = make_tf(
+        "1h",
+        close=101,
+        ma7=101,
+        ma25=100,
+        ma99=99,
+        rsi6=rsi6_history[-1],
+        rsi12=rsi6_history[-1],
+        rsi24=rsi6_history[-1],
+        macd=0.5,
+        macd_signal=0.4,
+        macd_hist=0.1,
+        atr=1.0,
+        volume=500,
+        ma25_history=ma25_history,
+        rsi6_history=rsi6_history,
+        trend_label="up",
+    )
+    deriv = make_deriv()
+
+    return MarketSnapshot(
+        symbol="TEST",
+        ts=datetime.utcnow(),
+        tf_4h=tf,
+        tf_1h=tf,
+        tf_15m=tf,
+        deriv=deriv,
     )
 
 
@@ -308,38 +339,28 @@ def test_trending_flow_still_uses_trend_logic():
     assert "[trending]" in (signal.reason or "")
 
 
-def test_trending_regime_not_overridden_when_ma_angle_valid():
-    engine = SignalEngine(Settings())
-
-    regime_signal = RegimeSignal(
-        regime="trending",
-        reason="",
-        ma_angle=0.01,
-        atr_rel=0.02,
-        rsi_avg_dev=5.0,
-        osc_count=3,
+def test_detect_regime_trending_not_overridden_when_ma_angle_valid():
+    snap = make_regime_snapshot(
+        ma25_history=[100, 100.2, 100.4, 100.6, 100.8, 101.0],
+        rsi6_history=[70, 30, 70, 30, 70, 30],
     )
 
-    overridden = engine._apply_regime_override(regime_signal)
+    signal = detect_regime(snap, Settings())
 
-    assert overridden.regime == "trending"
+    assert signal.regime == "trending"
+    assert "weak_trend_override" not in signal.reason
 
 
-def test_trending_regime_overridden_when_weak_trend():
-    engine = SignalEngine(Settings())
-
-    regime_signal = RegimeSignal(
-        regime="trending",
-        reason="",
-        ma_angle=0.00001,
-        atr_rel=0.02,
-        rsi_avg_dev=2.0,
-        osc_count=0,
+def test_detect_regime_overrides_weak_trend_inside_detector():
+    snap = make_regime_snapshot(
+        ma25_history=[100, 100.2, 100.4, 100.6, 100.8, 101.0],
+        rsi6_history=[70, 72, 74, 75, 76, 77],
     )
 
-    overridden = engine._apply_regime_override(regime_signal)
+    signal = detect_regime(snap, Settings())
 
-    assert overridden.regime == "high_vol_ranging"
+    assert signal.regime == "high_vol_ranging"
+    assert "weak_trend_override=1" in signal.reason
 
 
 def test_reason_prefix_uses_regime(monkeypatch):
