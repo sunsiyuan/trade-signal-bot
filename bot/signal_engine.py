@@ -40,6 +40,7 @@ class TradeSignal:
     reason: str = ""                # 人类可读的解释
     trade_confidence: float = 0.0   # 是否值得“采取行动”（胜率感）
     edge_confidence: float = 0.0    # 当前是否处在“好位置 / 边缘”（机会强度）
+    edge_type: Optional[str] = None  # 中文说明：趋势清晰 / 位置优势 / 结构机会
 
     # ---- 策略类型标识 ----
     setup_type: str = "none"        # trend_long / range_short / none 等
@@ -198,6 +199,7 @@ class SignalEngine:
             direction="none",
             trade_confidence=0.0,
             edge_confidence=0.5,
+            edge_type="位置优势",
             setup_type="none",
             reason="Range regime but no LH/MR trigger",
             snapshot=snap,

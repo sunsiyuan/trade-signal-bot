@@ -222,6 +222,7 @@ def build_signal_event(
             "setup_type": signal.setup_type,
             "trade_confidence": signal.trade_confidence,
             "edge_confidence": signal.edge_confidence,
+            "edge_type": getattr(signal, "edge_type", None),
             "execution_intent": _plan_dict(getattr(signal, "execution_intent", None)),
             "conditional_plan": _plan_dict(signal.conditional_plan),
             "entry": signal.entry,

@@ -216,7 +216,9 @@ def format_action_line(symbol, snapshot, signal, action_level: str, bias: str) -
 
     strat = _setup_code(getattr(signal, "setup_type", "none"))
     trade_conf = _format_pct(signal.trade_confidence or 0.0)
+    edge_type = getattr(signal, "edge_type", None)
     edge_conf = _format_pct(signal.edge_confidence or 0.0)
+    edge_conf_display = edge_conf + (f"（{edge_type}）" if edge_type else "")
     rsi_15m = _extract_rsi_15m(snapshot) if snapshot else "NA"
     macd_hist_4h = _format_macd_hist(
         getattr(snapshot.tf_4h, "macd_hist", None) if snapshot else None
@@ -235,7 +237,7 @@ def format_action_line(symbol, snapshot, signal, action_level: str, bias: str) -
     return (
         f"{symbol} | 💰 {price} | {regime_icon}{regime_cn} | "
         f"{action_icon} {action_cn}{bias_block} | "
-        f"Strat {strat} | Trade {trade_conf} / Edge {edge_conf} | "
+        f"Strat {strat} | Trade {trade_conf} / Edge {edge_conf_display} | "
         f"15m RSI6 {rsi_15m} | 4H MACD hist {macd_hist_4h} | Levels {levels} | "
         f"Risk {risk} | Why {why}"
     )
@@ -252,7 +254,9 @@ def format_summary_line(symbol, snapshot, signal) -> str:
     decision_icon = _decision_icon(signal.direction)
     decision_cn = _decision_cn(signal.direction)
     trade_conf = _format_pct(signal.trade_confidence or 0.0)
+    edge_type = getattr(signal, "edge_type", None)
     edge_conf = _format_pct(signal.edge_confidence or 0.0)
+    edge_conf_display = edge_conf + (f"（{edge_type}）" if edge_type else "")
     rsi_15m = _extract_rsi_15m(snapshot) if snapshot else "NA"
     macd_hist_4h = _format_macd_hist(
         getattr(snapshot.tf_4h, "macd_hist", None) if snapshot else None
@@ -261,7 +265,7 @@ def format_summary_line(symbol, snapshot, signal) -> str:
 
     return (
         f"{symbol} | 💰 {price} | {regime_icon}{regime_cn} | "
-        f"{decision_icon} {decision_cn} | Trade {trade_conf} / Edge {edge_conf} | "
+        f"{decision_icon} {decision_cn} | Trade {trade_conf} / Edge {edge_conf_display} | "
         f"15m RSI6 {rsi_15m} | 4H MACD hist {macd_hist_4h} | Setup {setup}"
     )
 
@@ -273,6 +277,7 @@ def format_signal_detail(signal):
 
     trade_conf = signal.trade_confidence or 0.0
     edge_conf = signal.edge_confidence if hasattr(signal, "edge_confidence") else 0.0
+    edge_type = getattr(signal, "edge_type", None)
     regime_icon, regime_cn = _regime_display(
         snap.regime,
         snap.tf_4h.trend_label,
@@ -290,7 +295,8 @@ def format_signal_detail(signal):
         f"⏱ {beijing_ts.strftime('%Y-%m-%d %H:%M')} (UTC+8)",
         f"{regime_icon}{regime_cn} | Regime reason: {snap.regime_reason or 'N/A'}",
         f"Direction: {signal.direction} | Setup: {signal.setup_type}",
-        f"Confidence: trade {int(trade_conf * 100)}% / edge {int(edge_conf * 100)}%",
+        f"Confidence: trade {int(trade_conf * 100)}% / edge {int(edge_conf * 100)}%"
+        f"{f'（{edge_type}）' if edge_type else ''}",
         f"Scores → long {long_score} / short {short_score}",
         f"Gate: {gate_tag}",
         f"Thresholds: {json.dumps(signal.thresholds_snapshot or {}, ensure_ascii=False)}",

@@ -227,25 +227,25 @@ def build_mean_reversion_signal(
             reason += " | OI missing → fallback mode"
 
         # 输出做多信号
-        return _attach_intent(
-            TradeSignal(
-                symbol=snap.symbol,
-                direction="long",
-                trade_confidence=confidence,
-                edge_confidence=edge_confidence,
-                entry=price,
-                tp1=tp1,
-                tp2=tp2,
-                sl=sl,
-                core_position_pct=core_pct,
-                add_position_pct=add_pct,
-                reason=reason,
-                setup_type="mr_long",
-                snapshot=snap,
-                debug_scores=debug_scores,
-                rejected_reasons=rejected_reasons or None,
-            )
+        signal = TradeSignal(
+            symbol=snap.symbol,
+            direction="long",
+            trade_confidence=confidence,
+            edge_confidence=edge_confidence,
+            entry=price,
+            tp1=tp1,
+            tp2=tp2,
+            sl=sl,
+            core_position_pct=core_pct,
+            add_position_pct=add_pct,
+            reason=reason,
+            setup_type="mr_long",
+            snapshot=snap,
+            debug_scores=debug_scores,
+            rejected_reasons=rejected_reasons or None,
         )
+        signal.edge_type = "位置优势"
+        return _attach_intent(signal)
 
     # =========================
     # B) 做空（short）均值回归触发条件
@@ -296,25 +296,25 @@ def build_mean_reversion_signal(
         if fallback_mode:
             reason += " | OI missing → fallback mode"
 
-        return _attach_intent(
-            TradeSignal(
-                symbol=snap.symbol,
-                direction="short",
-                trade_confidence=confidence,
-                edge_confidence=edge_confidence,
-                entry=price,
-                tp1=tp1,
-                tp2=tp2,
-                sl=sl,
-                core_position_pct=core_pct,
-                add_position_pct=add_pct,
-                reason=reason,
-                setup_type="mr_short",
-                snapshot=snap,
-                debug_scores=debug_scores,
-                rejected_reasons=rejected_reasons or None,
-            )
+        signal = TradeSignal(
+            symbol=snap.symbol,
+            direction="short",
+            trade_confidence=confidence,
+            edge_confidence=edge_confidence,
+            entry=price,
+            tp1=tp1,
+            tp2=tp2,
+            sl=sl,
+            core_position_pct=core_pct,
+            add_position_pct=add_pct,
+            reason=reason,
+            setup_type="mr_short",
+            snapshot=snap,
+            debug_scores=debug_scores,
+            rejected_reasons=rejected_reasons or None,
         )
+        signal.edge_type = "位置优势"
+        return _attach_intent(signal)
 
     # ---- 没有触发任何一边 → 返回 None ----
     # 上层会把它视为“MR 没出手”，然后可能尝试 LH 或返回 none

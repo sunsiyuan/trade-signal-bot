@@ -403,29 +403,29 @@ def build_trend_following_signal(
         from .signal_engine import TradeSignal
 
         trade_conf = round(confidence, 2)
-        return _attach_intent(
-            TradeSignal(
-                symbol=snap.symbol,
-                direction="none",
-                trade_confidence=trade_conf,
-                edge_confidence=round(trend_bias_conf, 2),
-                setup_type="none",
-                reason=(
-                    f"信心 {confidence:.2f} 低于最小阈值，gate={gate_tag}"
-                    f"（long={long_score:.2f}, short={short_score:.2f}）"
-                ),
-                snapshot=snap,
-                debug_scores={
-                    **scores,
-                    "trend_bias_conf": round(trend_bias_conf, 4),
-                    "high_conf": high_conf,
-                    "gate_tag": gate_tag,
-                    "base_confidence": round(base_confidence, 4),
-                },
-                rejected_reasons=["confidence_below_min"],
-                thresholds_snapshot=thresholds,
-            )
+        signal = TradeSignal(
+            symbol=snap.symbol,
+            direction="none",
+            trade_confidence=trade_conf,
+            edge_confidence=round(trend_bias_conf, 2),
+            setup_type="none",
+            reason=(
+                f"信心 {confidence:.2f} 低于最小阈值，gate={gate_tag}"
+                f"（long={long_score:.2f}, short={short_score:.2f}）"
+            ),
+            snapshot=snap,
+            debug_scores={
+                **scores,
+                "trend_bias_conf": round(trend_bias_conf, 4),
+                "high_conf": high_conf,
+                "gate_tag": gate_tag,
+                "base_confidence": round(base_confidence, 4),
+            },
+            rejected_reasons=["confidence_below_min"],
+            thresholds_snapshot=thresholds,
         )
+        signal.edge_type = "趋势清晰"
+        return _attach_intent(signal)
 
     # -------------------------
     # B) 硬门槛 2：如果 regime 不是 trending，则要求 confidence >= 0.8 才允许交易
@@ -435,28 +435,28 @@ def build_trend_following_signal(
         from .signal_engine import TradeSignal
 
         trade_conf = round(confidence, 2)
-        return _attach_intent(
-            TradeSignal(
-                symbol=snap.symbol,
-                direction="none",
-                trade_confidence=trade_conf,
-                edge_confidence=round(trend_bias_conf, 2),
-                setup_type="none",
-                reason=(
-                    f"行情模式为 {regime}，经软加权后信号 {confidence:.2f} 不足以出手"
-                ),
-                snapshot=snap,
-                debug_scores={
-                    **scores,
-                    "trend_bias_conf": round(trend_bias_conf, 4),
-                    "high_conf": high_conf,
-                    "gate_tag": gate_tag,
-                    "base_confidence": round(base_confidence, 4),
-                },
-                rejected_reasons=["regime_not_trending", "confidence_below_regime_threshold"],
-                thresholds_snapshot=thresholds,
-            )
+        signal = TradeSignal(
+            symbol=snap.symbol,
+            direction="none",
+            trade_confidence=trade_conf,
+            edge_confidence=round(trend_bias_conf, 2),
+            setup_type="none",
+            reason=(
+                f"行情模式为 {regime}，经软加权后信号 {confidence:.2f} 不足以出手"
+            ),
+            snapshot=snap,
+            debug_scores={
+                **scores,
+                "trend_bias_conf": round(trend_bias_conf, 4),
+                "high_conf": high_conf,
+                "gate_tag": gate_tag,
+                "base_confidence": round(base_confidence, 4),
+            },
+            rejected_reasons=["regime_not_trending", "confidence_below_regime_threshold"],
+            thresholds_snapshot=thresholds,
         )
+        signal.edge_type = "趋势清晰"
+        return _attach_intent(signal)
 
     # 6) 计算触发价 trigger（用 15m ATR）
     tf15 = snap.tf_15m
@@ -470,21 +470,21 @@ def build_trend_following_signal(
         from .signal_engine import TradeSignal
 
         trade_conf = round(confidence, 2)
-        return _attach_intent(
-            TradeSignal(
-                symbol=snap.symbol,
-                direction="none",
-                trade_confidence=trade_conf,
-                edge_confidence=round(trend_bias_conf, 2),
-                setup_type="none",
-                reason=(f"信号待确认：等待价格触发 {trigger:.2f} 以执行 {bias} 入场"),
-                entry=trigger,  # 注意：这里的 entry 实际是 trigger（等待价）
-                snapshot=snap,
-                debug_scores={**scores, "trend_bias_conf": round(trend_bias_conf, 4)},
-                rejected_reasons=["price_not_triggered"],
-                thresholds_snapshot=thresholds,
-            )
+        signal = TradeSignal(
+            symbol=snap.symbol,
+            direction="none",
+            trade_confidence=trade_conf,
+            edge_confidence=round(trend_bias_conf, 2),
+            setup_type="none",
+            reason=(f"信号待确认：等待价格触发 {trigger:.2f} 以执行 {bias} 入场"),
+            entry=trigger,  # 注意：这里的 entry 实际是 trigger（等待价）
+            snapshot=snap,
+            debug_scores={**scores, "trend_bias_conf": round(trend_bias_conf, 4)},
+            rejected_reasons=["price_not_triggered"],
+            thresholds_snapshot=thresholds,
         )
+        signal.edge_type = "趋势清晰"
+        return _attach_intent(signal)
 
     # 8) 已触发：进入“下单计划”构建
     entry = trigger
@@ -512,37 +512,37 @@ def build_trend_following_signal(
 
     trade_conf = round(confidence, 2)
 
-    return _attach_intent(
-        TradeSignal(
-            symbol=snap.symbol,
-            direction=bias,
-            trade_confidence=trade_conf,
-            setup_type="trend_short" if bias == "short" else "trend_long",
-            reason=(
-                f"{regime} 模式下触发确认价，按 R 结构下单，TP/SL 动态；"
-                f"score long={long_score:.2f} / short={short_score:.2f}"
-            ),
-            entry=entry,
-            tp1=tp1,
-            tp2=tp2,
-            tp3=tp3,
-            sl=sl,
-            core_position_pct=core_pct,
-            add_position_pct=add_pct,
-            snapshot=snap,
-            debug_scores={
-                **scores,
-                "regime": regime,
-                "trigger": trigger,
-                "R": R,
-                "high_conf": high_conf,
-                "gate_tag": gate_tag,
-                "base_confidence": round(base_confidence, 4),
-            },
-            rejected_reasons=[],
-            thresholds_snapshot=thresholds,
-        )
+    signal = TradeSignal(
+        symbol=snap.symbol,
+        direction=bias,
+        trade_confidence=trade_conf,
+        setup_type="trend_short" if bias == "short" else "trend_long",
+        reason=(
+            f"{regime} 模式下触发确认价，按 R 结构下单，TP/SL 动态；"
+            f"score long={long_score:.2f} / short={short_score:.2f}"
+        ),
+        entry=entry,
+        tp1=tp1,
+        tp2=tp2,
+        tp3=tp3,
+        sl=sl,
+        core_position_pct=core_pct,
+        add_position_pct=add_pct,
+        snapshot=snap,
+        debug_scores={
+            **scores,
+            "regime": regime,
+            "trigger": trigger,
+            "R": R,
+            "high_conf": high_conf,
+            "gate_tag": gate_tag,
+            "base_confidence": round(base_confidence, 4),
+        },
+        rejected_reasons=[],
+        thresholds_snapshot=thresholds,
     )
+    signal.edge_type = "趋势清晰"
+    return _attach_intent(signal)
 
 
 def build_execution_intent_tf(

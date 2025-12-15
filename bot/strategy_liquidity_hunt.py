@@ -342,25 +342,25 @@ def build_liquidity_hunt_signal(
         if missing_reason:
             reason += f" | {missing_reason}"
 
-        return _attach_intent(
-            TradeSignal(
-                symbol=snap.symbol,
-                direction="short",
-                trade_confidence=confidence,
-                edge_confidence=edge_confidence,
-                entry=price,
-                tp1=tp1,
-                tp2=tp2,
-                sl=sl,
-                core_position_pct=core_position_pct,
-                add_position_pct=add_position_pct,
-                reason=reason,
-                setup_type="lh_short",
-                snapshot=snap,
-                debug_scores=debug_scores,
-                rejected_reasons=rejected_reasons or None,
-            )
+        signal = TradeSignal(
+            symbol=snap.symbol,
+            direction="short",
+            trade_confidence=confidence,
+            edge_confidence=edge_confidence,
+            entry=price,
+            tp1=tp1,
+            tp2=tp2,
+            sl=sl,
+            core_position_pct=core_position_pct,
+            add_position_pct=add_position_pct,
+            reason=reason,
+            setup_type="lh_short",
+            snapshot=snap,
+            debug_scores=debug_scores,
+            rejected_reasons=rejected_reasons or None,
         )
+        signal.edge_type = "结构机会"
+        return _attach_intent(signal)
 
     # =========================
     # B) LH Long：靠近 swing low 的假跌破 → 做多回归
@@ -410,25 +410,25 @@ def build_liquidity_hunt_signal(
         if missing_reason:
             reason += f" | {missing_reason}"
 
-        return _attach_intent(
-            TradeSignal(
-                symbol=snap.symbol,
-                direction="long",
-                trade_confidence=confidence,
-                edge_confidence=edge_confidence,
-                entry=price,
-                tp1=tp1,
-                tp2=tp2,
-                sl=sl,
-                core_position_pct=core_position_pct,
-                add_position_pct=add_position_pct,
-                reason=reason,
-                setup_type="lh_long",
-                snapshot=snap,
-                debug_scores=debug_scores,
-                rejected_reasons=rejected_reasons or None,
-            )
+        signal = TradeSignal(
+            symbol=snap.symbol,
+            direction="long",
+            trade_confidence=confidence,
+            edge_confidence=edge_confidence,
+            entry=price,
+            tp1=tp1,
+            tp2=tp2,
+            sl=sl,
+            core_position_pct=core_position_pct,
+            add_position_pct=add_position_pct,
+            reason=reason,
+            setup_type="lh_long",
+            snapshot=snap,
+            debug_scores=debug_scores,
+            rejected_reasons=rejected_reasons or None,
         )
+        signal.edge_type = "结构机会"
+        return _attach_intent(signal)
 
     # ---- 任何一边不触发 → None ----
     return None
