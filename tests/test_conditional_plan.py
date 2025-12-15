@@ -6,12 +6,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
-from bot.conditional_plan import build_conditional_plan
-from bot.models import DerivativeIndicators, MarketSnapshot, TimeframeIndicators
-from bot.signal_engine import TradeSignal
+from bot.conditional_plan import build_conditional_plan_from_intent, now_plus_hours
+from bot.models import DerivativeIndicators, ExecutionIntent, MarketSnapshot, TimeframeIndicators
 
 
-def _tf(tf: str, close: float, now: datetime, trend_label: str = "down", atr: float = 2.0) -> TimeframeIndicators:
+def _tf(tf: str, close: float, now: datetime, atr: float) -> TimeframeIndicators:
     return TimeframeIndicators(
         timeframe=tf,
         close=close,
@@ -26,18 +25,18 @@ def _tf(tf: str, close: float, now: datetime, trend_label: str = "down", atr: fl
         macd_hist=-0.02,
         atr=atr,
         volume=100.0,
-        trend_label=trend_label,
+        trend_label="down",
         last_candle_open_utc=now - timedelta(hours=4),
         last_candle_close_utc=now,
         is_last_candle_closed=True,
     )
 
 
-def _snapshot(price: float = 410.0, trend_label: str = "down") -> MarketSnapshot:
+def _snapshot(price: float = 100.0, atr_4h: float = 10.0) -> MarketSnapshot:
     now = datetime.now(timezone.utc)
-    tf_4h = _tf("4h", price, now, trend_label=trend_label, atr=5.0)
-    tf_1h = _tf("1h", price - 2, now, trend_label=trend_label, atr=3.0)
-    tf_15m = _tf("15m", price - 4, now, trend_label=trend_label, atr=1.5)
+    tf_4h = _tf("4h", price, now, atr=atr_4h)
+    tf_1h = _tf("1h", price, now, atr=atr_4h / 2)
+    tf_15m = _tf("15m", price, now, atr=atr_4h / 4)
     deriv = DerivativeIndicators(
         funding=0.01,
         open_interest=1000.0,
@@ -45,124 +44,84 @@ def _snapshot(price: float = 410.0, trend_label: str = "down") -> MarketSnapshot
         orderbook_asks=[],
         orderbook_bids=[],
     )
-    return MarketSnapshot(
-        symbol="ZEC/USDC:USDC",
+    snap = MarketSnapshot(
+        symbol="BTC/USDT",
         ts=now,
         tf_4h=tf_4h,
         tf_1h=tf_1h,
         tf_15m=tf_15m,
         deriv=deriv,
-        regime="trending",
-        regime_reason="trend intact",
-        bids=120.0,
-        asks=100.0,
+    )
+    snap.price_last = price
+    return snap
+
+
+def _intent(entry: float, atr: float = 10.0, allow_execute_now: bool = True) -> ExecutionIntent:
+    return ExecutionIntent(
+        symbol="BTC/USDT",
+        direction="long",
+        entry_price=entry,
+        entry_reason="test",
+        invalidation_price=entry - 2,
+        atr_4h=atr,
+        ttl_hours=4,
+        allow_execute_now=allow_execute_now,
+        reason="unit-test",
+        debug=None,
     )
 
 
-def _make_signal(edge: float, trade: float, long_score: float, short_score: float) -> TradeSignal:
-    return TradeSignal(
-        symbol="ZEC/USDC:USDC",
+def test_execute_now_when_price_close_to_entry():
+    snap = _snapshot(price=100.0)
+    intent = _intent(entry=101.0, atr=10.0)
+
+    plan = build_conditional_plan_from_intent(intent, snap)
+
+    assert plan.execution_mode == "EXECUTE_NOW"
+    assert plan.entry_price == snap.price_last
+    assert plan.valid_until_utc is None
+    assert "execute now" in plan.explain
+
+
+def test_place_limit_when_within_one_atr():
+    snap = _snapshot(price=115.0)
+    intent = _intent(entry=110.0, atr=10.0, allow_execute_now=False)
+
+    plan = build_conditional_plan_from_intent(intent, snap)
+
+    assert plan.execution_mode == "PLACE_LIMIT_4H"
+    assert plan.entry_price == intent.entry_price
+    valid_dt = datetime.fromisoformat(plan.valid_until_utc)
+    delta_hours = (valid_dt - datetime.now(timezone.utc)).total_seconds() / 3600
+    assert 3.0 <= delta_hours <= 5.0
+    assert "limit" in plan.explain
+
+
+def test_watch_only_when_far():
+    snap = _snapshot(price=150.0)
+    intent = _intent(entry=100.0, atr=10.0)
+
+    plan = build_conditional_plan_from_intent(intent, snap)
+
+    assert plan.execution_mode == "WATCH_ONLY"
+    assert plan.entry_price is None
+    assert plan.valid_until_utc is None
+
+
+def test_direction_none_returns_watch():
+    snap = _snapshot(price=100.0)
+    intent = ExecutionIntent(
+        symbol="BTC/USDT",
         direction="none",
-        trade_confidence=trade,
-        edge_confidence=edge,
-        snapshot=None,
-        debug_scores={"long": long_score, "short": short_score},
+        entry_price=None,
+        entry_reason="none",
+        invalidation_price=None,
+        atr_4h=None,
+        reason="no intent",
+        debug=None,
     )
 
+    plan = build_conditional_plan_from_intent(intent, snap)
 
-def test_edge_high_trade_low_generates_plan():
-    snap = _snapshot()
-    signal = _make_signal(0.85, 0.1, long_score=0.1, short_score=0.9)
-
-    plan = build_conditional_plan(signal, snap, {})
-
-    assert plan is not None
-    assert plan["enabled"] is True
-    assert plan["plans"][0]["plan_type"] == "WAIT_PULLBACK"
-
-
-def test_skip_when_price_already_in_zone():
-    snap = _snapshot(price=395.0)
-    snap.tf_15m.close = snap.tf_4h.ma25  # force price inside likely zone
-    signal = _make_signal(0.9, 0.1, long_score=0.2, short_score=0.8)
-
-    plan = build_conditional_plan(signal, snap, {})
-
-    assert plan is None
-
-
-def test_entry_zone_is_valid_range():
-    snap = _snapshot()
-    signal = _make_signal(0.85, 0.05, long_score=0.15, short_score=0.85)
-
-    plan = build_conditional_plan(signal, snap, {})
-
-    entry_low, entry_high = plan["plans"][0]["entry_zone"]
-    assert entry_low < entry_high
-
-
-def test_short_sl_above_entry_high():
-    snap = _snapshot()
-    signal = _make_signal(0.9, 0.05, long_score=0.05, short_score=0.95)
-
-    plan = build_conditional_plan(signal, snap, {})
-
-    entry_low, entry_high = plan["plans"][0]["entry_zone"]
-    sl = plan["plans"][0]["risk"]["sl"]
-    assert sl > entry_high
-
-
-def test_valid_until_next_4h_close():
-    snap = _snapshot()
-    signal = _make_signal(0.85, 0.05, long_score=0.1, short_score=0.9)
-
-    plan = build_conditional_plan(signal, snap, {})
-
-    expected = (snap.tf_4h.last_candle_close_utc + timedelta(hours=4)).isoformat()
-    assert plan["validity"]["valid_until_utc"] == expected
-
-
-def test_should_attempt_plan_when_edge_high_but_not_execute():
-    snap = _snapshot(trend_label="down")
-    snap.regime = "high_vol_ranging"
-    snap.tf_15m.last_candle_close_utc = snap.tf_1h.last_candle_close_utc - timedelta(minutes=5)
-    signal = _make_signal(1.0, 0.62, long_score=0.8, short_score=0.1)
-
-    plan = build_conditional_plan(signal, snap, {})
-
-    assert plan is not None
-    assert plan.get("enabled") is True
-    assert len(plan.get("plans") or []) >= 1
-    debug = getattr(signal, "conditional_plan_debug", {})
-    assert debug.get("attempted") is True
-    assert debug.get("generated") is True
-    assert debug.get("skip_reason") is None
-
-
-def test_skip_reason_alignment_only_penalizes_not_blocks():
-    snap = _snapshot(trend_label="down")
-    snap.tf_4h.is_last_candle_closed = False
-    snap.tf_4h.last_candle_close_utc = snap.tf_4h.last_candle_close_utc - timedelta(hours=4)
-    snap.tf_15m.last_candle_close_utc = snap.tf_1h.last_candle_close_utc - timedelta(minutes=10)
-    signal = _make_signal(0.95, 0.6, long_score=0.75, short_score=0.2)
-
-    plan = build_conditional_plan(signal, snap, {})
-
-    assert plan is not None
-    penalty = plan["plans"][0]["confidence_components"].get("timeframe_alignment_penalty")
-    assert penalty == 0.05
-    debug = getattr(signal, "conditional_plan_debug", {})
-    assert debug.get("skip_reason") is None
-    assert debug.get("generated") is True
-
-
-def test_skip_when_regime_unknown():
-    snap = _snapshot()
-    snap.regime = "unknown"
-    signal = _make_signal(1.0, 0.6, long_score=0.7, short_score=0.2)
-
-    plan = build_conditional_plan(signal, snap, {})
-
-    assert plan is None
-    debug = getattr(signal, "conditional_plan_debug", {})
-    assert debug.get("skip_reason") == "SKIP_NO_BUILDER_PATH"
+    assert plan.execution_mode == "WATCH_ONLY"
+    assert plan.direction == "none"

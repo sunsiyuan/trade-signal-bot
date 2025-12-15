@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from dataclasses import asdict, is_dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -18,6 +19,16 @@ SCHEMA_VERSION = "2.1"
 
 def _safe_iso(dt: Optional[datetime]) -> Optional[str]:
     return dt.isoformat() if dt else None
+
+
+def _plan_dict(plan):
+    if plan is None:
+        return None
+    if is_dataclass(plan):
+        return asdict(plan)
+    if isinstance(plan, dict):
+        return plan
+    return None
 
 
 def _tf_to_timedelta(tf: str) -> timedelta:
@@ -211,7 +222,8 @@ def build_signal_event(
             "setup_type": signal.setup_type,
             "trade_confidence": signal.trade_confidence,
             "edge_confidence": signal.edge_confidence,
-            "conditional_plan": signal.conditional_plan if signal.conditional_plan is not None else None,
+            "execution_intent": _plan_dict(getattr(signal, "execution_intent", None)),
+            "conditional_plan": _plan_dict(signal.conditional_plan),
             "entry": signal.entry,
             "tp": {
                 "tp1": signal.tp1,

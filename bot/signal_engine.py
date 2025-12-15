@@ -8,10 +8,21 @@ from typing import Optional, List, Dict
 
 # 项目内依赖
 from .config import Settings                     # 全局配置（阈值、策略参数等）
-from .models import MarketSnapshot, Direction    # 市场快照 & 方向枚举
-from .conditional_plan import build_conditional_plan
+from .models import (
+    ConditionalPlan,
+    ExecutionIntent,
+    MarketSnapshot,
+    Direction,
+)
+from .conditional_plan import (
+    build_conditional_plan_from_intent,
+    resolve_atr_4h,
+)
 from .regime_detector import detect_regime, RegimeSignal
-from .strategy_trend_following import build_trend_following_signal
+from .strategy_trend_following import (
+    build_execution_intent_tf,
+    build_trend_following_signal,
+)
 
 
 # =========================
@@ -51,7 +62,8 @@ class TradeSignal:
     thresholds_snapshot: Optional[Dict] = None
 
     # ---- 条件单计划 ----
-    conditional_plan: Optional[Dict] = None
+    execution_intent: Optional[ExecutionIntent] = None
+    conditional_plan: Optional[ConditionalPlan] = None
     conditional_plan_debug: Optional[Dict] = None
 
 
@@ -84,6 +96,49 @@ class SignalEngine:
         if isinstance(self.settings, dict):
             return self.settings.get(name, default)
         return default
+
+    def _build_execution_intent(
+        self, signal: TradeSignal, snap: MarketSnapshot, regime_signal: RegimeSignal
+    ) -> ExecutionIntent:
+        if signal is None:
+            return ExecutionIntent(
+                symbol=snap.symbol,
+                direction="none",
+                entry_price=None,
+                entry_reason="no_signal",
+                invalidation_price=None,
+                atr_4h=resolve_atr_4h(snap),
+                reason="",
+                debug=None,
+            )
+        if getattr(signal, "execution_intent", None):
+            return signal.execution_intent  # type: ignore[return-value]
+
+        setup_type = getattr(signal, "setup_type", "") or ""
+        if regime_signal.regime == "trending":
+            return build_execution_intent_tf(snap, regime_signal, signal)
+
+        if regime_signal.regime in ("high_vol_ranging", "low_vol_ranging"):
+            if setup_type.startswith("lh"):
+                from .strategy_liquidity_hunt import build_execution_intent_lh
+
+                return build_execution_intent_lh(snap, signal)
+
+            if setup_type.startswith("mr"):
+                from .strategy_mean_reversion import build_execution_intent_mr
+
+                return build_execution_intent_mr(snap, signal)
+
+        return ExecutionIntent(
+            symbol=snap.symbol,
+            direction=signal.direction,
+            entry_price=getattr(signal, "entry", None),
+            entry_reason=setup_type or "unknown",
+            invalidation_price=signal.sl if hasattr(signal, "sl") else None,
+            atr_4h=resolve_atr_4h(snap),
+            reason=signal.reason,
+            debug=signal.debug_scores,
+        )
 
     # =========================
     # 核心入口：根据 regime 分流
@@ -142,7 +197,7 @@ class SignalEngine:
             symbol=snap.symbol,
             direction="none",
             trade_confidence=0.0,
-            edge_confidence=0.0,
+            edge_confidence=0.5,
             setup_type="none",
             reason="Range regime but no LH/MR trigger",
             snapshot=snap,
@@ -165,10 +220,9 @@ class SignalEngine:
 
         signal = self.decide(snap, regime_signal)
 
-        # --- 条件单（分批、回踩、突破） ---
-        conditional_plan = build_conditional_plan(signal, snap, self.settings)
-        if conditional_plan:
-            signal.conditional_plan = conditional_plan
+        intent = self._build_execution_intent(signal, snap, regime_signal)
+        signal.execution_intent = intent
+        signal.conditional_plan = build_conditional_plan_from_intent(intent, snap)
 
         # --- reason 统一前缀 ---
         if signal and signal.reason:

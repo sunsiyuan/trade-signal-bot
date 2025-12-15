@@ -11,7 +11,8 @@ Trend-following strategy extracted from the signal engine.
 """
 from typing import Dict, TYPE_CHECKING, Any
 
-from .models import MarketSnapshot, Direction      # 市场快照、方向（long/short/none）
+from .conditional_plan import resolve_atr_4h
+from .models import ExecutionIntent, MarketSnapshot, Direction      # 市场快照、方向（long/short/none）
 from .regime_detector import RegimeSignal          # regime 检测输出（trending / ranging 等）
 
 # 仅用于类型检查：避免运行时循环 import
@@ -351,6 +352,10 @@ def build_trend_following_signal(
     - TradeSignal(direction=long/short)：给 entry/tp/sl/position 的可执行计划
     """
 
+    def _attach_intent(ts: "TradeSignal") -> "TradeSignal":
+        ts.execution_intent = build_execution_intent_tf(snap, regime_signal, ts)
+        return ts
+
     # 1) 方向打分
     scores = _score_direction(snap)
     short_score = scores["short"]
@@ -398,26 +403,28 @@ def build_trend_following_signal(
         from .signal_engine import TradeSignal
 
         trade_conf = round(confidence, 2)
-        return TradeSignal(
-            symbol=snap.symbol,
-            direction="none",
-            trade_confidence=trade_conf,
-            edge_confidence=round(trend_bias_conf, 2),
-            setup_type="none",
-            reason=(
-                f"信心 {confidence:.2f} 低于最小阈值，gate={gate_tag}"
-                f"（long={long_score:.2f}, short={short_score:.2f}）"
-            ),
-            snapshot=snap,
-            debug_scores={
-                **scores,
-                "trend_bias_conf": round(trend_bias_conf, 4),
-                "high_conf": high_conf,
-                "gate_tag": gate_tag,
-                "base_confidence": round(base_confidence, 4),
-            },
-            rejected_reasons=["confidence_below_min"],
-            thresholds_snapshot=thresholds,
+        return _attach_intent(
+            TradeSignal(
+                symbol=snap.symbol,
+                direction="none",
+                trade_confidence=trade_conf,
+                edge_confidence=round(trend_bias_conf, 2),
+                setup_type="none",
+                reason=(
+                    f"信心 {confidence:.2f} 低于最小阈值，gate={gate_tag}"
+                    f"（long={long_score:.2f}, short={short_score:.2f}）"
+                ),
+                snapshot=snap,
+                debug_scores={
+                    **scores,
+                    "trend_bias_conf": round(trend_bias_conf, 4),
+                    "high_conf": high_conf,
+                    "gate_tag": gate_tag,
+                    "base_confidence": round(base_confidence, 4),
+                },
+                rejected_reasons=["confidence_below_min"],
+                thresholds_snapshot=thresholds,
+            )
         )
 
     # -------------------------
@@ -428,25 +435,27 @@ def build_trend_following_signal(
         from .signal_engine import TradeSignal
 
         trade_conf = round(confidence, 2)
-        return TradeSignal(
-            symbol=snap.symbol,
-            direction="none",
-            trade_confidence=trade_conf,
-            edge_confidence=round(trend_bias_conf, 2),
-            setup_type="none",
-            reason=(
-                f"行情模式为 {regime}，经软加权后信号 {confidence:.2f} 不足以出手"
-            ),
-            snapshot=snap,
-            debug_scores={
-                **scores,
-                "trend_bias_conf": round(trend_bias_conf, 4),
-                "high_conf": high_conf,
-                "gate_tag": gate_tag,
-                "base_confidence": round(base_confidence, 4),
-            },
-            rejected_reasons=["regime_not_trending", "confidence_below_regime_threshold"],
-            thresholds_snapshot=thresholds,
+        return _attach_intent(
+            TradeSignal(
+                symbol=snap.symbol,
+                direction="none",
+                trade_confidence=trade_conf,
+                edge_confidence=round(trend_bias_conf, 2),
+                setup_type="none",
+                reason=(
+                    f"行情模式为 {regime}，经软加权后信号 {confidence:.2f} 不足以出手"
+                ),
+                snapshot=snap,
+                debug_scores={
+                    **scores,
+                    "trend_bias_conf": round(trend_bias_conf, 4),
+                    "high_conf": high_conf,
+                    "gate_tag": gate_tag,
+                    "base_confidence": round(base_confidence, 4),
+                },
+                rejected_reasons=["regime_not_trending", "confidence_below_regime_threshold"],
+                thresholds_snapshot=thresholds,
+            )
         )
 
     # 6) 计算触发价 trigger（用 15m ATR）
@@ -461,18 +470,20 @@ def build_trend_following_signal(
         from .signal_engine import TradeSignal
 
         trade_conf = round(confidence, 2)
-        return TradeSignal(
-            symbol=snap.symbol,
-            direction="none",
-            trade_confidence=trade_conf,
-            edge_confidence=round(trend_bias_conf, 2),
-            setup_type="none",
-        reason=(f"信号待确认：等待价格触发 {trigger:.2f} 以执行 {bias} 入场"),
-        entry=trigger,  # 注意：这里的 entry 实际是 trigger（等待价）
-        snapshot=snap,
-            debug_scores={**scores, "trend_bias_conf": round(trend_bias_conf, 4)},
-            rejected_reasons=["price_not_triggered"],
-            thresholds_snapshot=thresholds,
+        return _attach_intent(
+            TradeSignal(
+                symbol=snap.symbol,
+                direction="none",
+                trade_confidence=trade_conf,
+                edge_confidence=round(trend_bias_conf, 2),
+                setup_type="none",
+                reason=(f"信号待确认：等待价格触发 {trigger:.2f} 以执行 {bias} 入场"),
+                entry=trigger,  # 注意：这里的 entry 实际是 trigger（等待价）
+                snapshot=snap,
+                debug_scores={**scores, "trend_bias_conf": round(trend_bias_conf, 4)},
+                rejected_reasons=["price_not_triggered"],
+                thresholds_snapshot=thresholds,
+            )
         )
 
     # 8) 已触发：进入“下单计划”构建
@@ -501,32 +512,53 @@ def build_trend_following_signal(
 
     trade_conf = round(confidence, 2)
 
-    return TradeSignal(
+    return _attach_intent(
+        TradeSignal(
+            symbol=snap.symbol,
+            direction=bias,
+            trade_confidence=trade_conf,
+            setup_type="trend_short" if bias == "short" else "trend_long",
+            reason=(
+                f"{regime} 模式下触发确认价，按 R 结构下单，TP/SL 动态；"
+                f"score long={long_score:.2f} / short={short_score:.2f}"
+            ),
+            entry=entry,
+            tp1=tp1,
+            tp2=tp2,
+            tp3=tp3,
+            sl=sl,
+            core_position_pct=core_pct,
+            add_position_pct=add_pct,
+            snapshot=snap,
+            debug_scores={
+                **scores,
+                "regime": regime,
+                "trigger": trigger,
+                "R": R,
+                "high_conf": high_conf,
+                "gate_tag": gate_tag,
+                "base_confidence": round(base_confidence, 4),
+            },
+            rejected_reasons=[],
+            thresholds_snapshot=thresholds,
+        )
+    )
+
+
+def build_execution_intent_tf(
+    snap: MarketSnapshot,
+    regime_signal: RegimeSignal,
+    signal: "TradeSignal",
+) -> ExecutionIntent:
+    trigger = signal.entry
+
+    return ExecutionIntent(
         symbol=snap.symbol,
-        direction=bias,
-        trade_confidence=trade_conf,
-        setup_type="trend_short" if bias == "short" else "trend_long",
-        reason=(
-            f"{regime} 模式下触发确认价，按 R 结构下单，TP/SL 动态；"
-            f"score long={long_score:.2f} / short={short_score:.2f}"
-        ),
-        entry=entry,
-        tp1=tp1,
-        tp2=tp2,
-        tp3=tp3,
-        sl=sl,
-        core_position_pct=core_pct,
-        add_position_pct=add_pct,
-        snapshot=snap,
-        debug_scores={
-            **scores,
-            "regime": regime,
-            "trigger": trigger,
-            "R": R,
-            "high_conf": high_conf,
-            "gate_tag": gate_tag,
-            "base_confidence": round(base_confidence, 4),
-        },
-        rejected_reasons=[],
-        thresholds_snapshot=thresholds,
+        direction=signal.direction,
+        entry_price=trigger,
+        entry_reason="TF_trigger",
+        invalidation_price=signal.sl,
+        atr_4h=resolve_atr_4h(snap),
+        reason=signal.reason,
+        debug=signal.debug_scores,
     )

@@ -18,7 +18,8 @@
 
 from typing import Optional, TYPE_CHECKING
 
-from .models import MarketSnapshot
+from .conditional_plan import resolve_atr_4h
+from .models import ExecutionIntent, MarketSnapshot
 from .regime_detector import Regime
 
 # 避免运行时循环 import：只有类型检查时才导入 TradeSignal
@@ -118,6 +119,10 @@ def build_liquidity_hunt_signal(
     snap: MarketSnapshot, regime: Regime, settings
 ) -> Optional["TradeSignal"]:
     """Look for liquidity hunt setups around swing highs/lows in high vol ranges."""
+
+    def _attach_intent(ts: "TradeSignal") -> "TradeSignal":
+        ts.execution_intent = build_execution_intent_lh(snap, ts)
+        return ts
 
     # ---- 0) 只在 high_vol_ranging 才启用 LH ----
     # 低波动震荡不做 LH（因为“猎杀”通常发生在波动更大的区间）
@@ -337,21 +342,24 @@ def build_liquidity_hunt_signal(
         if missing_reason:
             reason += f" | {missing_reason}"
 
-        return TradeSignal(
-            symbol=snap.symbol,
-            direction="short",
-            trade_confidence=confidence,
-            edge_confidence=edge_confidence,
-            entry=price,
-            tp1=tp1,
-            tp2=tp2,
-            sl=sl,
-            core_position_pct=core_position_pct,
-            add_position_pct=add_position_pct,
-            reason=reason,
-            snapshot=snap,
-            debug_scores=debug_scores,
-            rejected_reasons=rejected_reasons or None,
+        return _attach_intent(
+            TradeSignal(
+                symbol=snap.symbol,
+                direction="short",
+                trade_confidence=confidence,
+                edge_confidence=edge_confidence,
+                entry=price,
+                tp1=tp1,
+                tp2=tp2,
+                sl=sl,
+                core_position_pct=core_position_pct,
+                add_position_pct=add_position_pct,
+                reason=reason,
+                setup_type="lh_short",
+                snapshot=snap,
+                debug_scores=debug_scores,
+                rejected_reasons=rejected_reasons or None,
+            )
         )
 
     # =========================
@@ -402,22 +410,42 @@ def build_liquidity_hunt_signal(
         if missing_reason:
             reason += f" | {missing_reason}"
 
-        return TradeSignal(
-            symbol=snap.symbol,
-            direction="long",
-            trade_confidence=confidence,
-            edge_confidence=edge_confidence,
-            entry=price,
-            tp1=tp1,
-            tp2=tp2,
-            sl=sl,
-            core_position_pct=core_position_pct,
-            add_position_pct=add_position_pct,
-            reason=reason,
-            snapshot=snap,
-            debug_scores=debug_scores,
-            rejected_reasons=rejected_reasons or None,
+        return _attach_intent(
+            TradeSignal(
+                symbol=snap.symbol,
+                direction="long",
+                trade_confidence=confidence,
+                edge_confidence=edge_confidence,
+                entry=price,
+                tp1=tp1,
+                tp2=tp2,
+                sl=sl,
+                core_position_pct=core_position_pct,
+                add_position_pct=add_position_pct,
+                reason=reason,
+                setup_type="lh_long",
+                snapshot=snap,
+                debug_scores=debug_scores,
+                rejected_reasons=rejected_reasons or None,
+            )
         )
 
     # ---- 任何一边不触发 → None ----
     return None
+
+
+def build_execution_intent_lh(
+    snap: MarketSnapshot, signal: "TradeSignal"
+) -> ExecutionIntent:
+    sweep_level = signal.entry
+
+    return ExecutionIntent(
+        symbol=snap.symbol,
+        direction=signal.direction,
+        entry_price=sweep_level,
+        entry_reason="LH_sweep_or_wall",
+        invalidation_price=signal.sl,
+        atr_4h=resolve_atr_4h(snap),
+        reason=signal.reason,
+        debug=signal.debug_scores,
+    )

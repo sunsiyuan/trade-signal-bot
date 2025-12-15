@@ -6,6 +6,45 @@ Direction = Literal["long", "short", "none"]
 
 
 @dataclass
+class ExecutionIntent:
+    symbol: str
+    direction: Direction                 # long / short / none
+
+    # --- 理想入场（单点） ---
+    entry_price: Optional[float]         # 理想 entry（非当前价也可）
+    entry_reason: str                    # "TF_trigger" / "MR_MA25" / "LH_sweep"
+
+    # --- 结构性失效 ---
+    invalidation_price: Optional[float]  # 结构破坏位（通常 = SL）
+
+    # --- 执行参数 ---
+    ttl_hours: int = 4                   # 固定 4h
+    allow_execute_now: bool = True       # 是否允许当前价立即成交
+
+    # --- 风控引用 ---
+    atr_4h: Optional[float] = None       # 用于 execution gate（不用于改 SL）
+
+    # --- Debug ---
+    reason: str = ""
+    debug: Optional[Dict] = None
+
+
+@dataclass
+class ConditionalPlan:
+    execution_mode: Literal[
+        "EXECUTE_NOW",
+        "PLACE_LIMIT_4H",
+        "WATCH_ONLY",
+    ]
+
+    direction: Direction
+    entry_price: Optional[float]
+    valid_until_utc: Optional[str]
+    cancel_if: Dict[str, bool]
+    explain: str
+
+
+@dataclass
 class TimeframeIndicators:
     """单个时间周期的关键指标快照，比如 4H / 1H / 15m。"""
     timeframe: str              # "4h" / "1h" / "15m"
