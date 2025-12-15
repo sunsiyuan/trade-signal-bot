@@ -1,17 +1,46 @@
+# =========================
+# strategy_mean_reversion.py
+# =========================
+# 目标：在震荡（ranging）行情里做“均值回归”（回归 MA25）
+# 核心触发：价格偏离 MA25 达到一定 ATR 倍数 + RSI 极端 + OI 变化（或允许 OI 缺失 fallback）
+# 输出：TradeSignal(long/short) 或 None（不触发）
+# =========================
+
 from typing import Optional, TYPE_CHECKING
 
 from .models import MarketSnapshot, Direction
 from .regime_detector import Regime
 
+# 为了避免运行时循环 import：只有类型检查时才导入 TradeSignal
 if TYPE_CHECKING:  # pragma: no cover
     from .signal_engine import TradeSignal
 
 
+# -------------------------
+# 帮手：取某个 timeframe 对象
+# -------------------------
 def _get_tf(snap: MarketSnapshot, tf: str):
+    """
+    从 MarketSnapshot 里取出对应 tf 的指标对象
+    例如 tf="1h" 返回 snap.get_timeframe("1h")
+    """
     return snap.get_timeframe(tf)
 
 
+# -------------------------
+# 帮手：读取 settings.mean_reversion.xxx
+# 兼容 Settings 对象和 dict 两种结构
+# -------------------------
 def _get_nested(settings, group: str, key: str, default):
+    """
+    读取 settings[group][key] 的通用函数，兼容：
+    1) settings 是 Settings 对象：
+       - hasattr(settings, group) -> container = settings.group
+       - container 可能是 dict 或对象
+    2) settings 是 dict：
+       - settings[group] 是一个 dict
+    读取失败则返回 default
+    """
     if hasattr(settings, group):
         container = getattr(settings, group)
         if isinstance(container, dict):
@@ -23,27 +52,53 @@ def _get_nested(settings, group: str, key: str, default):
     return default
 
 
+# =========================
+# 主函数：构建均值回归信号
+# =========================
 def build_mean_reversion_signal(
     snap: MarketSnapshot, regime: Regime, settings
 ) -> Optional["TradeSignal"]:
     """Generate a mean-reversion signal when the market is ranging."""
 
+    # ---- 0) 仅在 ranging regime 才运行 ----
+    # 注意：如果 regime 不是 high/low vol ranging，这里直接返回 None
+    # 上层（signal_engine._decide_range）收到 None 就认为“这个策略不触发”
     if regime not in {"high_vol_ranging", "low_vol_ranging"}:
         return None
 
+    # ---- 1) 读入 mean_reversion 策略参数（全部可调） ----
+    # tf：使用哪个周期做 MR（默认 1h）
     tf_name = _get_nested(settings, "mean_reversion", "tf", "1h")
+
+    # RSI 触发阈值：极端超卖/超买（默认非常极端：12/88）
     rsi_oversold = _get_nested(settings, "mean_reversion", "rsi_oversold", 12)
     rsi_overbought = _get_nested(settings, "mean_reversion", "rsi_overbought", 88)
+
+    # 价格偏离 MA25 的 ATR 倍数阈值：越大越“等极端再出手”（默认 1.2 ATR）
     atr_dev_mult = _get_nested(settings, "mean_reversion", "atr_dev_mult", 1.2)
+
+    # OI 变化阈值：认为“flush / squeeze” 的最小变化百分比（默认 3%）
     min_oi_change_pct = _get_nested(settings, "mean_reversion", "min_oi_change_pct", 3.0)
+
+    # 这里虽然读了 tp_to_sl_ratio，但当前实现并未用到（保留未来扩展）
     tp_to_sl_ratio = _get_nested(settings, "mean_reversion", "tp_to_sl_ratio", 1.5)
+
+    # 仓位建议：核心仓位 + 加仓仓位（默认 0.5 / 0.25）
     core_pct = _get_nested(settings, "mean_reversion", "core_position_pct", 0.5)
     add_pct = _get_nested(settings, "mean_reversion", "add_position_pct", 0.25)
+
+    # SL buffer：ATR 的倍数（默认 0.8 ATR）
     sl_buffer_mult = _get_nested(settings, "mean_reversion", "sl_buffer_mult", 0.8)
+
+    # 是否强制要求 OI（默认 True）
     require_oi = _get_nested(settings, "mean_reversion", "require_oi", True)
+
+    # 如果 OI 缺失，是否允许 fallback 仍然出信号（默认 True）
     allow_oi_missing_fallback = _get_nested(
         settings, "mean_reversion", "allow_oi_missing_fallback", True
     )
+
+    # fallback 模式的“降权系数”：降低 confidence / 缩小仓位（默认 0.75）
     fallback_confidence_mult = _get_nested(
         settings, "mean_reversion", "fallback_confidence_mult", 0.75
     )
@@ -54,36 +109,71 @@ def build_mean_reversion_signal(
         settings, "mean_reversion", "fallback_add_position_mult", 0.0
     )
 
+    # ---- 2) 取指标：价格、MA25、ATR、RSI6、OI_change ----
     tf = _get_tf(snap, tf_name)
+
     price = tf.close
     ma25 = tf.ma25
-    atr = max(tf.atr, 1e-6)
+    atr = max(tf.atr, 1e-6)     # 防止 atr=0 导致除零
     rsi6 = tf.rsi6
+
+    # OI 变化（百分比），来自衍生品信息 deriv
     oi_change_pct = snap.deriv.oi_change_pct
     oi_missing = oi_change_pct is None
 
+    # ---- 3) 处理 OI 缺失策略 ----
+    # 如果缺 OI 且 require_oi=True 且 allow_fallback=False，则直接不触发（返回 None）
     if oi_missing and require_oi and not allow_oi_missing_fallback:
         return None
 
+    # =========================
+    # A) 做多（long）均值回归触发条件
+    # =========================
+
+    # 条件 1：价格显著低于 MA25（低于 MA25 - atr_dev_mult*ATR）
     cond_far_below_ma = price <= ma25 - atr_dev_mult * atr
+
+    # 条件 2：RSI6 极端超卖
     cond_oversold = rsi6 <= rsi_oversold
+
+    # 条件 3：OI 正在“出清”（OI_change_pct <= -min_oi_change_pct）
+    # 解释：OI 显著下降可能代表多空平仓出清 → 震荡里更容易反弹回均线
     cond_oi_flushing_out = (
         oi_change_pct is not None and oi_change_pct <= -min_oi_change_pct
     )
 
+    # fallback_mode：OI 缺失但允许 fallback
     fallback_mode = oi_missing and allow_oi_missing_fallback
 
+    # 触发逻辑：必须同时满足
+    # 1) 远离均线（下方） + 2) 超卖 + 3) OI 出清 或者 OI 缺失 fallback
     if cond_far_below_ma and cond_oversold and (cond_oi_flushing_out or fallback_mode):
         from .signal_engine import TradeSignal
+
+        # ---- 构建下单计划（做多） ----
+
+        # 止损：放在 price 下方 sl_buffer_mult*ATR（注意：这非常紧/非常激进，取决于 sl_buffer_mult）
         sl = price - sl_buffer_mult * atr
+
+        # 止盈：先看回归 MA25，再看略高于 MA25 半个 ATR
+        # 这是典型“回归均线”的 TP 设计
         tp1 = ma25
         tp2 = ma25 + 0.5 * atr
+
+        # rr（风险回报比）估算：到 tp1 的收益 / 到 sl 的风险
         rr = abs(tp1 - price) / max(abs(price - sl), 1e-6)
+
+        # confidence：基础 0.6，然后按 rr 增加一些，封顶 0.9
+        # 注意：rr 越大（离均线越远 or sl 越近）→ confidence 越高
         confidence = min(0.9, 0.6 + 0.1 * rr)
+
+        # 如果是 fallback（OI 缺失），则降低 confidence 并缩仓位
         if fallback_mode:
             confidence *= fallback_confidence_mult
             core_pct *= fallback_core_position_mult
             add_pct *= fallback_add_position_mult
+
+        # reason：给输出解释用
         reason = (
             f"Mean reversion long: price {price:.4f} < MA25 {ma25:.4f} - {atr_dev_mult} ATR, "
             f"RSI6={rsi6:.1f} oversold, OI_change={oi_change_pct if oi_change_pct is not None else float('nan'):.1f}% "
@@ -92,6 +182,7 @@ def build_mean_reversion_signal(
         if fallback_mode:
             reason += " | OI missing → fallback mode"
 
+        # 输出做多信号
         return TradeSignal(
             symbol=snap.symbol,
             direction="long",
@@ -106,23 +197,47 @@ def build_mean_reversion_signal(
             snapshot=snap,
         )
 
+    # =========================
+    # B) 做空（short）均值回归触发条件
+    # =========================
+
+    # 条件 1：价格显著高于 MA25（高于 MA25 + atr_dev_mult*ATR）
     cond_far_above_ma = price >= ma25 + atr_dev_mult * atr
+
+    # 条件 2：RSI6 极端超买
     cond_overbought = rsi6 >= rsi_overbought
+
+    # 条件 3：OI 正在“挤压”（OI_change_pct >= min_oi_change_pct）
+    # 解释：OI 显著上升可能代表加杠杆追涨/追跌 → 震荡里更容易被反向收割回均线
     cond_oi_squeezing = (
         oi_change_pct is not None and oi_change_pct >= min_oi_change_pct
     )
 
+    # 触发逻辑：同 long 对称
     if cond_far_above_ma and cond_overbought and (cond_oi_squeezing or fallback_mode):
         from .signal_engine import TradeSignal
+
+        # ---- 构建下单计划（做空） ----
+
+        # 止损：放在 price 上方 sl_buffer_mult*ATR
         sl = price + sl_buffer_mult * atr
+
+        # 止盈：先回归 MA25，再略低于 MA25 半个 ATR
         tp1 = ma25
         tp2 = ma25 - 0.5 * atr
+
+        # rr 估算（到 tp1 的收益 / 到 sl 的风险）
         rr = abs(tp1 - price) / max(abs(sl - price), 1e-6)
+
+        # confidence 同 long：基础 0.6 + 0.1*rr，封顶 0.9
         confidence = min(0.9, 0.6 + 0.1 * rr)
+
+        # OI 缺失 fallback 降权与缩仓
         if fallback_mode:
             confidence *= fallback_confidence_mult
             core_pct *= fallback_core_position_mult
             add_pct *= fallback_add_position_mult
+
         reason = (
             f"Mean reversion short: price {price:.4f} > MA25 {ma25:.4f} + {atr_dev_mult} ATR, "
             f"RSI6={rsi6:.1f} overbought, OI_change={oi_change_pct if oi_change_pct is not None else float('nan'):.1f}% "
@@ -145,4 +260,6 @@ def build_mean_reversion_signal(
             snapshot=snap,
         )
 
+    # ---- 没有触发任何一边 → 返回 None ----
+    # 上层会把它视为“MR 没出手”，然后可能尝试 LH 或返回 none
     return None

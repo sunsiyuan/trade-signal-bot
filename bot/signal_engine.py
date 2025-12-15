@@ -1,30 +1,51 @@
-# bot/signal_engine.py
+# =========================
+# signal_engine.py
+# =========================
+
+# 标准库：数据类 & 类型标注
 from dataclasses import dataclass
 from typing import Optional, List, Dict
 
-from .config import Settings
-from .models import MarketSnapshot, Direction
+# 项目内依赖
+from .config import Settings                     # 全局配置（阈值、策略参数等）
+from .models import MarketSnapshot, Direction    # 市场快照 & 方向枚举
 from .conditional_plan import build_conditional_plan
 from .regime_detector import detect_regime, RegimeSignal
 from .strategy_trend_following import build_trend_following_signal
 
 
+# -------------------------
+# 工具函数：数值裁剪
+# -------------------------
 def clamp(value: float, min_value: float = 0.0, max_value: float = 1.0) -> float:
+    """
+    将 value 裁剪到 [min_value, max_value] 区间内
+    常用于把各种指标归一化到 0~1
+    """
     return max(min_value, min(max_value, value))
 
 
+# =========================
+# TradeSignal：最终输出给“执行层 / Telegram / 人工 review”的对象
+# =========================
 @dataclass
 class TradeSignal:
-    """最终要输出的执行方案。"""
+    """最终要输出的执行方案（单一币种、单一方向）。"""
+
+    # ---- 基本信息 ----
     symbol: str
     direction: Direction            # "long" / "short" / "none"
-    reason: str = ""                # 文字解释，方便你人工 review
-    confidence: float = 0.0         # 兼容旧字段，映射到 trade_confidence
-    trade_confidence: float = 0.0   # 0~1，用来映射“胜率区间”
-    edge_confidence: float = 0.0    # 0~1，区间边缘机会强度
-    setup_type: str = "none"        # "trend_long" / "trend_short" / "range_long" / "range_short" / "none"
 
-    # 点位
+    # ---- 解释 & 置信度 ----
+    reason: str = ""                # 人类可读的解释
+    confidence: float = 0.0         # 旧字段（兼容历史）
+    trade_confidence: float = 0.0   # 是否值得“采取行动”（胜率感）
+    edge_confidence: float = 0.0    # 当前是否处在“好位置 / 边缘”（机会强度）
+
+    # ---- 策略类型标识 ----
+    setup_type: str = "none"        # trend_long / range_short / none 等
+
+    # ---- 交易点位 ----
     entry: Optional[float] = None
     entry_range: Optional[List[float]] = None
     tp1: Optional[float] = None
@@ -32,46 +53,69 @@ class TradeSignal:
     tp3: Optional[float] = None
     sl: Optional[float] = None
 
-    # 仓位建议
-    core_position_pct: float = 0.0
-    add_position_pct: float = 0.0
+    # ---- 仓位建议 ----
+    core_position_pct: float = 0.0  # 核心仓位
+    add_position_pct: float = 0.0   # 加仓仓位
 
-    # 为了 debug，把关键指标也带出来（可选）
+    # ---- Debug / Explainability ----
     snapshot: Optional[MarketSnapshot] = None
     debug_scores: Optional[Dict] = None
     rejected_reasons: Optional[List[str]] = None
     thresholds_snapshot: Optional[Dict] = None
+
+    # ---- 条件单计划 ----
     conditional_plan: Optional[Dict] = None
     conditional_plan_debug: Optional[Dict] = None
 
     def __post_init__(self):
-        # 保持与旧 confidence 字段的兼容性
+        """
+        兼容旧字段：
+        - 如果只填了 confidence → 同步到 trade_confidence
+        - 如果只填了 trade_confidence → 同步到 confidence
+        """
         if self.trade_confidence == 0 and self.confidence:
             self.trade_confidence = self.confidence
         if self.confidence == 0 and self.trade_confidence:
             self.confidence = self.trade_confidence
 
 
+# =========================
+# SignalEngine：整个系统的“中枢大脑”
+# =========================
 class SignalEngine:
-    """把指标 → 交易决策 的大脑。"""
+    """把 MarketSnapshot + Regime → TradeSignal 的决策引擎。"""
 
     def __init__(self, settings: Optional[Settings] = None):
-        """Initialize the signal engine with optional overrides.
-
-        A ``Settings`` instance remains the preferred input, but a plain
-        dictionary can also be passed in tests to override thresholds.
+        """
+        settings:
+        - 推荐传 Settings 实例
+        - 也允许 dict（方便测试 / 临时 override）
         """
         self.settings = settings or {}
         self.min_confidence = self._get_setting("min_confidence", 0.3)
 
+    # -------------------------
+    # 通用 settings 读取
+    # -------------------------
     def _get_setting(self, name: str, default):
+        """
+        统一读取 settings：
+        - Settings.xxx
+        - 或 dict["xxx"]
+        """
         if hasattr(self.settings, name):
             return getattr(self.settings, name)
         if isinstance(self.settings, dict):
             return self.settings.get(name, default)
         return default
 
+    # -------------------------
+    # regime 子配置读取
+    # -------------------------
     def _get_regime_setting(self, name: str, default):
+        """
+        专门读取 settings.regime.xxx
+        """
         if hasattr(self.settings, "regime"):
             container = getattr(self.settings, "regime")
             if isinstance(container, dict):
@@ -84,7 +128,14 @@ class SignalEngine:
                 return regime_settings.get(name, default)
         return default
 
+    # -------------------------
+    # regime 覆写逻辑（弱趋势 → 震荡）
+    # -------------------------
     def _apply_regime_override(self, regime_signal: RegimeSignal) -> RegimeSignal:
+        """
+        如果 detect_regime 判为 trending，
+        但趋势强度不足，则强制降级为 high_vol_ranging
+        """
         if regime_signal.regime != "trending":
             return regime_signal
 
@@ -110,22 +161,31 @@ class SignalEngine:
 
         return regime_signal
 
+    # =========================
+    # 核心入口：根据 regime 分流
+    # =========================
     def decide(self, snap: MarketSnapshot, regime_signal: RegimeSignal) -> TradeSignal:
         regime_signal = self._apply_regime_override(regime_signal)
         regime = regime_signal.regime
 
+        # 把 regime 写回 snapshot（方便下游 debug / 输出）
         snap.regime = regime
         snap.regime_reason = regime_signal.reason
 
         if regime == "trending":
+            # 趋势行情 → 趋势跟随策略
             return build_trend_following_signal(
                 snap,
                 regime_signal,
                 min_confidence=self.min_confidence,
                 settings=self.settings,
             )
+
         if regime in ("high_vol_ranging", "low_vol_ranging"):
+            # 震荡行情 → range router
             return self._decide_range(snap)
+
+        # 兜底：未知 regime 也按趋势处理（防止系统无输出）
         return build_trend_following_signal(
             snap,
             regime_signal,
@@ -133,22 +193,32 @@ class SignalEngine:
             settings=self.settings,
         )
 
+    # =========================
+    # Range regime：机会评分器
+    # =========================
     def _range_setup_score(self, snap: MarketSnapshot) -> Dict[str, float]:
-        # edge proxy: distance from midline (RSI=50) on 1h
+        """
+        只做“机会强度评估”，不直接下单
+        """
+
+        # --- 1h RSI 偏离 50：判断是否靠近区间边缘 ---
         rsi1h = snap.rsi_1h if snap.rsi_1h is not None else snap.tf_1h.rsi6
         abs_dev = abs(rsi1h - 50.0)
         edge = clamp((abs_dev - 5.0) / (15.0 - 5.0), 0.0, 1.0)
 
+        # --- 15m RSI：短周期超买 / 超卖 ---
         rsi15 = snap.rsi_15m if snap.rsi_15m is not None else snap.tf_15m.rsi6
-
         oversold = clamp((35 - rsi15) / 15, 0.0, 1.0)
         overbought = clamp((rsi15 - 65) / 15, 0.0, 1.0)
+
+        # --- 1h RSI 二次确认 ---
         confirm_long = clamp((45 - rsi1h) / 15, 0.0, 1.0)
         confirm_short = clamp((rsi1h - 55) / 15, 0.0, 1.0)
 
+        # --- 波动率（ATR relative） ---
         if snap.atrrel is None:
             atrrel = None
-            tape = 0.5  # neutral, not bullish when missing
+            tape = 0.5                # 缺失时给中性，不偏多
             atrrel_missing = True
             tape_reason = "atrrel_missing_fallback"
         else:
@@ -157,19 +227,28 @@ class SignalEngine:
             atrrel_missing = False
             tape_reason = "atrrel_based"
 
+        # --- 订单簿倾斜 ---
         asks = snap.asks if snap.asks is not None else 0.0
         bids = snap.bids if snap.bids is not None else 0.0
         ob = clamp((bids - asks) / (bids + asks + 1e-9), -1.0, 1.0)
         ob_long = clamp(ob, 0.0, 1.0)
         ob_short = clamp(-ob, 0.0, 1.0)
 
+        # --- 中位惩罚（靠近中线 = 不做） ---
         mid_penalty = 1 - edge
 
+        # --- 综合评分 ---
         long_score = edge * (
-            0.45 * oversold + 0.20 * confirm_long + 0.20 * tape + 0.15 * ob_long
+            0.45 * oversold +
+            0.20 * confirm_long +
+            0.20 * tape +
+            0.15 * ob_long
         )
         short_score = edge * (
-            0.45 * overbought + 0.20 * confirm_short + 0.20 * tape + 0.15 * ob_short
+            0.45 * overbought +
+            0.20 * confirm_short +
+            0.20 * tape +
+            0.15 * ob_short
         )
 
         return {
@@ -185,6 +264,9 @@ class SignalEngine:
             "tape_reason": tape_reason,
         }
 
+    # =========================
+    # Range router：LH / MR
+    # =========================
     def _decide_range(self, snap: MarketSnapshot) -> TradeSignal:
         from .strategy_liquidity_hunt import build_liquidity_hunt_signal
         from .strategy_mean_reversion import build_mean_reversion_signal
@@ -193,8 +275,10 @@ class SignalEngine:
         edge = scores["edge"]
         best = max(scores["long"], scores["short"])
         regime = getattr(snap, "regime", None)
+
         thresholds = {"edge_min": 0.35, "best_min": 0.55}
 
+        # --- 高波动震荡：优先 LH ---
         if regime == "high_vol_ranging":
             lh = build_liquidity_hunt_signal(snap, regime, self.settings)
             if lh:
@@ -203,6 +287,7 @@ class SignalEngine:
                 lh.thresholds_snapshot = thresholds
                 return lh
 
+        # --- 所有震荡：MR ---
         if regime in ("high_vol_ranging", "low_vol_ranging"):
             mr = build_mean_reversion_signal(snap, regime, self.settings)
             if mr:
@@ -211,6 +296,7 @@ class SignalEngine:
                 mr.thresholds_snapshot = thresholds
                 return mr
 
+        # --- 无策略命中 ---
         return TradeSignal(
             symbol=snap.symbol,
             direction="none",
@@ -227,25 +313,37 @@ class SignalEngine:
             thresholds_snapshot=thresholds,
         )
 
+    # =========================
+    # 对外主入口
+    # =========================
     def generate_signal(self, snap: MarketSnapshot) -> TradeSignal:
+        """
+        一次完整信号生成流程：
+        detect_regime → decide → conditional_plan → reason 整理
+        """
         regime_signal = detect_regime(snap, self.settings)
+
         snap.regime = regime_signal.regime
         snap.regime_reason = regime_signal.reason
 
         signal = self.decide(snap, regime_signal)
 
+        # --- 条件单（分批、回踩、突破） ---
         conditional_plan = build_conditional_plan(signal, snap, self.settings)
         if conditional_plan:
             signal.conditional_plan = conditional_plan
 
+        # --- reason 统一前缀 ---
         if signal and signal.reason:
-            reason_prefix = "unknown"
             if snap.regime in ("high_vol_ranging", "low_vol_ranging"):
-                reason_prefix = "range"
+                prefix = "range"
             elif snap.regime == "trending":
-                reason_prefix = "trending"
+                prefix = "trending"
+            else:
+                prefix = "unknown"
+
             signal.reason = (
-                f"[{reason_prefix}] {signal.reason} | regime={snap.regime} | {snap.regime_reason}"
+                f"[{prefix}] {signal.reason} | regime={snap.regime} | {snap.regime_reason}"
             )
 
         return signal
