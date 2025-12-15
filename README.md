@@ -7,6 +7,8 @@
 - 输出：Long / Short / DoNothing + Entry 区间、TP1/TP2、SL 建议
 - 运行方式：本地命令行 / GitHub Actions 定时执行
 
+> **Strategy decides “what & why”. ConditionalPlan decides “how & when”.**
+
 ## 本地运行
 
 ```bash

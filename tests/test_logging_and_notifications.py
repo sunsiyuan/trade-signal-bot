@@ -9,7 +9,12 @@ from bot.main import (
     format_summary_line,
     is_actionable,
 )
-from bot.models import DerivativeIndicators, MarketSnapshot, TimeframeIndicators
+from bot.models import (
+    ConditionalPlan,
+    DerivativeIndicators,
+    MarketSnapshot,
+    TimeframeIndicators,
+)
 from bot.signal_engine import TradeSignal
 
 
@@ -139,25 +144,24 @@ def test_is_actionable_classification():
 def test_format_conditional_plan_line():
     snapshot = _make_snapshot()
     signal = _make_signal(snapshot)
-    signal.conditional_plan = {
-        "validity": {"valid_until_utc": "2024-01-01T00:00:00"},
-        "plans": [
-            {
-                "plan_type": "WAIT_PULLBACK",
-                "direction": "long",
-                "entry_zone": [99.0, 100.0],
-                "entry_logic": "test logic",
-                "risk": {"sl": 98.0, "tp": [101.0, 102.0]},
-                "confidence_if_triggered": 0.6,
-            }
-        ],
-    }
+    signal.conditional_plan = ConditionalPlan(
+        execution_mode="PLACE_LIMIT_4H",
+        direction="long",
+        entry_price=100.0,
+        valid_until_utc="2024-01-01T00:00:00",
+        cancel_if={
+            "invalidation_crossed": True,
+            "regime_changed": True,
+            "expired": True,
+        },
+        explain="Place 4h limit order at ideal entry",
+    )
 
     line = format_conditional_plan_line(signal)
 
-    assert "WAIT_PULLBACK" in line
-    assert "99.0000-100.0000" in line
-    assert "触发信心 60%" in line
+    assert "PLACE_LIMIT_4H" in line
+    assert "LONG" in line
+    assert "100.0000" in line
 
 
 def test_settings_pick_up_telegram_env(monkeypatch):

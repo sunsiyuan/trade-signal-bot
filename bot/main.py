@@ -1,7 +1,7 @@
 # bot/main.py
 import json
 import os
-from dataclasses import replace
+from dataclasses import asdict, is_dataclass, replace
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple
 
@@ -16,6 +16,16 @@ from .signal_engine import SignalEngine
 
 def _beijing_now() -> datetime:
     return datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=8)))
+
+
+def _plan_dict(plan):
+    if plan is None:
+        return None
+    if is_dataclass(plan):
+        return asdict(plan)
+    if isinstance(plan, dict):
+        return plan
+    return None
 
 
 def _decision_icon(direction: str) -> str:
@@ -140,10 +150,11 @@ def _top_reasons(signal, action_level: str) -> str:
 
 
 def _bias_from_scores(signal) -> str:
-    if getattr(signal, "conditional_plan", None):
-        plans = signal.conditional_plan.get("plans") or []
-        if plans:
-            return plans[0].get("direction", "NONE").upper()
+    plan = _plan_dict(getattr(signal, "conditional_plan", None))
+    if plan:
+        direction = plan.get("direction")
+        if direction:
+            return direction.upper()
     if signal.direction and signal.direction != "none":
         return signal.direction.upper()
     scores = signal.debug_scores or {}
@@ -293,70 +304,34 @@ def format_signal_detail(signal):
         f"• OI: {snap.deriv.open_interest:,.2f} | Funding: {snap.deriv.funding * 100:.4f}%",
     ]
 
-    conditional = getattr(signal, "conditional_plan", None) or {}
-    plans = conditional.get("plans") or []
+    conditional = _plan_dict(getattr(signal, "conditional_plan", None))
     if conditional:
         lines.append("")
-        validity = conditional.get("validity", {})
         lines.append("⏳ 4H Conditional Plan")
-        lines.append(f"Valid until: {validity.get('valid_until_utc', 'N/A')}")
-        for idx, plan in enumerate(plans, start=1):
-            entry_zone = plan.get("entry_zone", [])
-            lines.append(
-                f"Plan {idx}: {plan.get('plan_type', '')} {plan.get('direction', '')} | "
-                f"Zone {entry_zone} | Logic: {plan.get('entry_logic', '')} | "
-                f"SL {plan.get('risk', {}).get('sl', 'N/A')} | TP {plan.get('risk', {}).get('tp', [])} | "
-                f"Conf if triggered {plan.get('confidence_if_triggered', 0)}"
-            )
+        lines.append(
+            f"Mode: {conditional.get('execution_mode', '')} | Direction: {conditional.get('direction', '')}"
+        )
+        lines.append(
+            f"Entry: {_format_price(conditional.get('entry_price'))} | Valid until: {conditional.get('valid_until_utc') or 'N/A'}"
+        )
+        if conditional.get("explain"):
+            lines.append(f"Explain: {conditional.get('explain')}")
 
     return "\n".join(lines)
 
 
 def format_conditional_plan_line(signal) -> str:
-    plan = getattr(signal, "conditional_plan", None)
+    plan = _plan_dict(getattr(signal, "conditional_plan", None))
     if not plan:
         return ""
 
-    plans = plan.get("plans") or []
-    if not plans:
-        return ""
-
-    item = plans[0]
-    entry_zone = item.get("entry_zone") or []
-    if len(entry_zone) >= 2:
-        entry_text = f"{entry_zone[0]:.4f}-{entry_zone[1]:.4f}"
-    elif entry_zone:
-        entry_text = f"{entry_zone[0]:.4f}"
-    else:
-        entry_text = "N/A"
-
-    risk = item.get("risk", {}) or {}
-    sl = risk.get("sl")
-    sl_text = f"{sl:.2f}" if isinstance(sl, (int, float)) else (sl or "N/A")
-    tps = risk.get("tp") or []
-    if tps:
-        tp_text = "/".join(
-            f"{tp:.0f}" if abs(tp) >= 100 else f"{tp:.2f}" for tp in tps
-        )
-    else:
-        tp_text = "N/A"
-
-    confidence = item.get("confidence_if_triggered", 0.0)
-    plan_type = item.get("plan_type", "")
-    plan_label = "条件单"
-    if "BOUNCE" in plan_type.upper():
-        plan_label = "超跌反弹多"
-    elif "REJECT" in plan_type.upper():
-        plan_label = "冲高回落空"
-    elif "PULLBACK" in plan_type.upper():
-        plan_label = "趋势回调入场"
-
-    valid_until = plan.get("validity", {}).get("valid_until_utc", "N/A")
+    entry_price = plan.get("entry_price")
+    entry_text = _format_price(entry_price) if entry_price is not None else "N/A"
+    valid_until = plan.get("valid_until_utc") or "N/A"
 
     return (
-        f"{signal.symbol} | ⏳4H 条件单（{plan_label} | {plan_type}） 区间 {entry_text} | "
-        f"触发: {item.get('entry_logic', '')} | SL {sl_text} | TP {tp_text} | "
-        f"触发信心 {_format_pct(confidence)} | 有效期 {valid_until}"
+        f"{signal.symbol} | ⏳4H 执行 {plan.get('execution_mode', '')} {plan.get('direction', '').upper()} "
+        f"@ {entry_text} | 有效期 {valid_until} | {plan.get('explain', '')}"
     )
 
 

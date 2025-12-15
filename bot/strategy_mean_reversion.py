@@ -8,7 +8,8 @@
 
 from typing import Optional, TYPE_CHECKING
 
-from .models import MarketSnapshot, Direction
+from .conditional_plan import resolve_atr_4h
+from .models import ExecutionIntent, MarketSnapshot, Direction
 from .regime_detector import Regime
 
 # 为了避免运行时循环 import：只有类型检查时才导入 TradeSignal
@@ -63,6 +64,10 @@ def build_mean_reversion_signal(
     snap: MarketSnapshot, regime: Regime, settings
 ) -> Optional["TradeSignal"]:
     """Generate a mean-reversion signal when the market is ranging."""
+
+    def _attach_intent(ts: "TradeSignal") -> "TradeSignal":
+        ts.execution_intent = build_execution_intent_mr(snap, ts)
+        return ts
 
     # ---- 0) 仅在 ranging regime 才运行 ----
     # 注意：如果 regime 不是 high/low vol ranging，这里直接返回 None
@@ -222,21 +227,24 @@ def build_mean_reversion_signal(
             reason += " | OI missing → fallback mode"
 
         # 输出做多信号
-        return TradeSignal(
-            symbol=snap.symbol,
-            direction="long",
-            trade_confidence=confidence,
-            edge_confidence=edge_confidence,
-            entry=price,
-            tp1=tp1,
-            tp2=tp2,
-            sl=sl,
-            core_position_pct=core_pct,
-            add_position_pct=add_pct,
-            reason=reason,
-            snapshot=snap,
-            debug_scores=debug_scores,
-            rejected_reasons=rejected_reasons or None,
+        return _attach_intent(
+            TradeSignal(
+                symbol=snap.symbol,
+                direction="long",
+                trade_confidence=confidence,
+                edge_confidence=edge_confidence,
+                entry=price,
+                tp1=tp1,
+                tp2=tp2,
+                sl=sl,
+                core_position_pct=core_pct,
+                add_position_pct=add_pct,
+                reason=reason,
+                setup_type="mr_long",
+                snapshot=snap,
+                debug_scores=debug_scores,
+                rejected_reasons=rejected_reasons or None,
+            )
         )
 
     # =========================
@@ -288,23 +296,43 @@ def build_mean_reversion_signal(
         if fallback_mode:
             reason += " | OI missing → fallback mode"
 
-        return TradeSignal(
-            symbol=snap.symbol,
-            direction="short",
-            trade_confidence=confidence,
-            edge_confidence=edge_confidence,
-            entry=price,
-            tp1=tp1,
-            tp2=tp2,
-            sl=sl,
-            core_position_pct=core_pct,
-            add_position_pct=add_pct,
-            reason=reason,
-            snapshot=snap,
-            debug_scores=debug_scores,
-            rejected_reasons=rejected_reasons or None,
+        return _attach_intent(
+            TradeSignal(
+                symbol=snap.symbol,
+                direction="short",
+                trade_confidence=confidence,
+                edge_confidence=edge_confidence,
+                entry=price,
+                tp1=tp1,
+                tp2=tp2,
+                sl=sl,
+                core_position_pct=core_pct,
+                add_position_pct=add_pct,
+                reason=reason,
+                setup_type="mr_short",
+                snapshot=snap,
+                debug_scores=debug_scores,
+                rejected_reasons=rejected_reasons or None,
+            )
         )
 
     # ---- 没有触发任何一边 → 返回 None ----
     # 上层会把它视为“MR 没出手”，然后可能尝试 LH 或返回 none
     return None
+
+
+def build_execution_intent_mr(
+    snap: MarketSnapshot, signal: "TradeSignal"
+) -> ExecutionIntent:
+    ma25 = snap.tf_1h.ma25
+
+    return ExecutionIntent(
+        symbol=snap.symbol,
+        direction=signal.direction,
+        entry_price=ma25,
+        entry_reason="MR_MA25",
+        invalidation_price=signal.sl,
+        atr_4h=resolve_atr_4h(snap),
+        reason=signal.reason,
+        debug=signal.debug_scores,
+    )

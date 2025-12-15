@@ -418,7 +418,10 @@ def test_reason_prefix_uses_regime(monkeypatch):
 
     monkeypatch.setattr("bot.signal_engine.detect_regime", fake_detect_regime)
     monkeypatch.setattr(SignalEngine, "decide", fake_decide)
-    monkeypatch.setattr("bot.signal_engine.build_conditional_plan", lambda *_, **__: None)
+    monkeypatch.setattr(
+        "bot.signal_engine.build_conditional_plan_from_intent",
+        lambda *_, **__: None,
+    )
 
     signal = engine.generate_signal(snap)
 

@@ -3,10 +3,15 @@
 import json
 from datetime import datetime, timedelta, timezone
 
-from bot.conditional_plan import build_conditional_plan
+from bot.conditional_plan import build_conditional_plan_from_intent, resolve_atr_4h
 from bot.config import Settings
 from bot.logging_schema import build_signal_event
-from bot.models import DerivativeIndicators, MarketSnapshot, TimeframeIndicators
+from bot.models import (
+    DerivativeIndicators,
+    ExecutionIntent,
+    MarketSnapshot,
+    TimeframeIndicators,
+)
 from bot.signal_engine import TradeSignal
 
 
@@ -63,15 +68,26 @@ def main():
     snap = build_snapshot()
     signal = TradeSignal(
         symbol=snap.symbol,
-        direction="none",
+        direction="long",
         trade_confidence=0.62,
         edge_confidence=1.0,
-        setup_type="none",
+        setup_type="trend_long",
         debug_scores={"long": 0.8, "short": 0.1},
     )
 
-    plan = build_conditional_plan(signal, snap, settings)
-    signal.conditional_plan = plan
+    intent = ExecutionIntent(
+        symbol=snap.symbol,
+        direction=signal.direction,
+        entry_price=snap.tf_1h.ma25,
+        entry_reason="demo",
+        invalidation_price=snap.tf_1h.ma25 - snap.tf_1h.atr,
+        atr_4h=resolve_atr_4h(snap),
+        reason="demo plan",
+        debug=signal.debug_scores,
+    )
+
+    signal.execution_intent = intent
+    signal.conditional_plan = build_conditional_plan_from_intent(intent, snap)
 
     event = build_signal_event(snap, signal, settings)
     print(json.dumps(event, ensure_ascii=False, indent=2))
