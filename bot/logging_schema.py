@@ -212,7 +212,7 @@ def build_signal_event(
             "setup_type": signal.setup_type,
             "trade_confidence": signal.trade_confidence,
             "edge_confidence": signal.edge_confidence,
-            "conditional_plan": signal.conditional_plan or {},
+            "conditional_plan": signal.conditional_plan if signal.conditional_plan is not None else None,
             "entry": signal.entry,
             "entry_range": signal.entry_range or [],
             "tp": {
@@ -233,6 +233,7 @@ def build_signal_event(
             "long_score": long_score,
             "short_score": short_score,
             "tf_close_delta_sec": tf_close_delta_sec,
+            "conditional_plan_debug": getattr(signal, "conditional_plan_debug", None),
         },
     }
 

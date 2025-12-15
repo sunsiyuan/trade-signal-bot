@@ -321,55 +321,51 @@ def format_signal_detail(signal):
 
 
 def format_conditional_plan_line(signal) -> str:
-    plan = getattr(signal, "conditional_plan", None) or {}
+    plan = getattr(signal, "conditional_plan", None)
+    if not plan:
+        return ""
+
     plans = plan.get("plans") or []
     if not plans:
         return ""
 
-    validity = plan.get("validity", {})
-    valid_until = validity.get("valid_until_utc", "N/A")
+    item = plans[0]
+    entry_zone = item.get("entry_zone") or []
+    if len(entry_zone) >= 2:
+        entry_text = f"{entry_zone[0]:.4f}-{entry_zone[1]:.4f}"
+    elif entry_zone:
+        entry_text = f"{entry_zone[0]:.4f}"
+    else:
+        entry_text = "N/A"
 
-    lines = [f"{signal.symbol} 条件计划 | 有效期至 {valid_until}"]
-
-    for idx, item in enumerate(plans, start=1):
-        entry_zone = item.get("entry_zone") or []
-        if len(entry_zone) >= 2:
-            entry_text = f"{entry_zone[0]:.4f}-{entry_zone[1]:.4f}"
-        elif entry_zone:
-            entry_text = f"{entry_zone[0]:.4f}"
-        else:
-            entry_text = "N/A"
-
-        risk = item.get("risk", {}) or {}
-        sl = risk.get("sl")
-        sl_text = f"{sl:.4f}" if isinstance(sl, (int, float)) else (sl or "N/A")
-        tps = risk.get("tp") or []
-        if tps:
-            tp_text = "/".join(
-                f"{tp:.0f}" if abs(tp) >= 100 else f"{tp:.4f}" for tp in tps
-            )
-        else:
-            tp_text = "N/A"
-
-        confidence = item.get("confidence_if_triggered", 0.0)
-
-        lines.append(
-            " ".join(
-                filter(
-                    None,
-                    [
-                        f"计划{idx}: {item.get('plan_type', '')} {item.get('direction', '')}",
-                        f"区间 {entry_text}",
-                        f"逻辑 {item.get('entry_logic', '')}",
-                        f"SL {sl_text}",
-                        f"TP {tp_text}",
-                        f"触发信心 {_format_pct(confidence)}",
-                    ],
-                )
-            )
+    risk = item.get("risk", {}) or {}
+    sl = risk.get("sl")
+    sl_text = f"{sl:.2f}" if isinstance(sl, (int, float)) else (sl or "N/A")
+    tps = risk.get("tp") or []
+    if tps:
+        tp_text = "/".join(
+            f"{tp:.0f}" if abs(tp) >= 100 else f"{tp:.2f}" for tp in tps
         )
+    else:
+        tp_text = "N/A"
 
-    return "\n".join(lines)
+    confidence = item.get("confidence_if_triggered", 0.0)
+    plan_type = item.get("plan_type", "")
+    plan_label = "条件单"
+    if "BOUNCE" in plan_type.upper():
+        plan_label = "超跌反弹多"
+    elif "REJECT" in plan_type.upper():
+        plan_label = "冲高回落空"
+    elif "PULLBACK" in plan_type.upper():
+        plan_label = "趋势回调入场"
+
+    valid_until = plan.get("validity", {}).get("valid_until_utc", "N/A")
+
+    return (
+        f"{signal.symbol} | ⏳4H 条件单（{plan_label} | {plan_type}） 区间 {entry_text} | "
+        f"触发: {item.get('entry_logic', '')} | SL {sl_text} | TP {tp_text} | "
+        f"触发信心 {_format_pct(confidence)} | 有效期 {valid_until}"
+    )
 
 
 def render_signal_dashboard(signals) -> str:
