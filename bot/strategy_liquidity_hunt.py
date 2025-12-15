@@ -135,7 +135,7 @@ def build_liquidity_hunt_signal(
 
     # 价格接近 swing 的判定阈值（默认 0.004=0.4%）
     # 注意：后面用的是 *100 转成百分比对比，因此这里本质是“相对价格比例”
-    price_proximity_pct = _get_nested(settings, "liquidity_hunt", "price_proximity_pct", 0.004)
+    price_proximity_pct = _get_nested(settings, "liquidity_hunt", "price_proximity_pct", 0.006)
 
     # 墙大小倍数：ask_wall >= min_wall_mult * bid_wall 视为大 ask wall（默认 3x）
     min_wall_mult = _get_nested(settings, "liquidity_hunt", "min_wall_mult", 3.0)
@@ -147,7 +147,7 @@ def build_liquidity_hunt_signal(
     post_spike_candle_count = _get_nested(settings, "liquidity_hunt", "post_spike_candle_count", 3)
 
     # SL buffer：止损比 fake breakout 的 extreme 再多给一点（默认 0.15%）
-    sl_buffer_pct = _get_nested(settings, "liquidity_hunt", "sl_buffer_pct", 0.0015)
+    sl_buffer_pct = _get_nested(settings, "liquidity_hunt", "sl_buffer_pct", 0.002)
 
     # 仓位建议
     core_pct = _get_nested(settings, "liquidity_hunt", "core_position_pct", 0.5)
@@ -158,7 +158,7 @@ def build_liquidity_hunt_signal(
 
     # OI 缺失是否允许 fallback（默认 True）
     allow_oi_missing_fallback = _get_nested(
-        settings, "liquidity_hunt", "allow_oi_missing_fallback", True
+        settings, "liquidity_hunt", "allow_oi_missing_fallback", False
     )
 
     # OI 缺失 fallback 时的置信度与仓位降级
