@@ -52,7 +52,6 @@ def _make_snapshot() -> MarketSnapshot:
         tf_1h=tf_1h,
         tf_15m=tf_15m,
         deriv=deriv,
-        market_mode="trending",
         regime="trending",
         regime_reason="trend strong",
     )

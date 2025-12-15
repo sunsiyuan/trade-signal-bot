@@ -51,7 +51,6 @@ def build_snapshot():
         tf_1h=tf_1h,
         tf_15m=tf_15m,
         deriv=deriv,
-        market_mode="high_vol_ranging",
         regime="high_vol_ranging",
         regime_reason="range with volatility",
         bids=120.0,

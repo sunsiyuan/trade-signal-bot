@@ -26,7 +26,7 @@ def _decision_cn(direction: str) -> str:
     return {"long": "多", "short": "空"}.get(direction, "观望")
 
 
-def _regime_display(regime: str, market_mode: str, trend_label: str) -> Tuple[str, str]:
+def _regime_display(regime: str, trend_label: str) -> Tuple[str, str]:
     mapping = {
         "trending": "趋势",
         "high_vol_ranging": "高波动震荡",
@@ -194,7 +194,6 @@ def format_action_line(symbol, snapshot, signal, action_level: str, bias: str) -
     price = _format_price(mark_price if mark_price is not None else fallback_price)
     regime_icon, regime_cn = _regime_display(
         getattr(snapshot, "regime", ""),
-        getattr(snapshot, "market_mode", ""),
         getattr(snapshot.tf_4h, "trend_label", "") if snapshot else "",
     )
     action_icon = "✅" if action_level == "EXECUTE" else "👀"
@@ -242,7 +241,6 @@ def format_summary_line(symbol, snapshot, signal) -> str:
     price = _format_price(mark_price if mark_price is not None else fallback_price)
     regime_icon, regime_cn = _regime_display(
         getattr(snapshot, "regime", ""),
-        getattr(snapshot, "market_mode", ""),
         getattr(snapshot.tf_4h, "trend_label", "") if snapshot else "",
     )
     decision_icon = _decision_icon(signal.direction)
@@ -271,7 +269,6 @@ def format_signal_detail(signal):
     edge_conf = signal.edge_confidence if hasattr(signal, "edge_confidence") else 0.0
     regime_icon, regime_cn = _regime_display(
         snap.regime,
-        snap.market_mode,
         snap.tf_4h.trend_label,
     )
     beijing_ts = snap.ts.astimezone(timezone(timedelta(hours=8)))
