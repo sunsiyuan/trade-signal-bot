@@ -121,3 +121,37 @@ def test_valid_until_next_4h_close():
 
     expected = (snap.tf_4h.last_candle_close_utc + timedelta(hours=4)).isoformat()
     assert plan["validity"]["valid_until_utc"] == expected
+
+
+def test_should_attempt_plan_when_edge_high_but_not_execute():
+    snap = _snapshot(trend_label="down")
+    snap.market_mode = "high_vol_ranging"
+    snap.tf_15m.last_candle_close_utc = snap.tf_1h.last_candle_close_utc - timedelta(minutes=5)
+    signal = _make_signal(1.0, 0.62, long_score=0.8, short_score=0.1)
+
+    plan = build_conditional_plan(signal, snap, {})
+
+    assert plan is not None
+    assert plan.get("enabled") is True
+    assert len(plan.get("plans") or []) >= 1
+    debug = getattr(signal, "conditional_plan_debug", {})
+    assert debug.get("attempted") is True
+    assert debug.get("generated") is True
+    assert debug.get("skip_reason") is None
+
+
+def test_skip_reason_alignment_only_penalizes_not_blocks():
+    snap = _snapshot(trend_label="down")
+    snap.tf_4h.is_last_candle_closed = False
+    snap.tf_4h.last_candle_close_utc = snap.tf_4h.last_candle_close_utc - timedelta(hours=4)
+    snap.tf_15m.last_candle_close_utc = snap.tf_1h.last_candle_close_utc - timedelta(minutes=10)
+    signal = _make_signal(0.95, 0.6, long_score=0.75, short_score=0.2)
+
+    plan = build_conditional_plan(signal, snap, {})
+
+    assert plan is not None
+    penalty = plan["plans"][0]["confidence_components"].get("timeframe_alignment_penalty")
+    assert penalty == 0.05
+    debug = getattr(signal, "conditional_plan_debug", {})
+    assert debug.get("skip_reason") is None
+    assert debug.get("generated") is True

@@ -42,6 +42,7 @@ class TradeSignal:
     rejected_reasons: Optional[List[str]] = None
     thresholds_snapshot: Optional[Dict] = None
     conditional_plan: Optional[Dict] = None
+    conditional_plan_debug: Optional[Dict] = None
 
     def __post_init__(self):
         # 保持与旧 confidence 字段的兼容性
