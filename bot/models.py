@@ -88,7 +88,6 @@ class MarketSnapshot:
     tf_1h: TimeframeIndicators
     tf_15m: TimeframeIndicators
     deriv: DerivativeIndicators
-    market_mode: str = "range"
     regime: str = "unknown"
     regime_reason: str = ""
     rsidev: float = 0.0

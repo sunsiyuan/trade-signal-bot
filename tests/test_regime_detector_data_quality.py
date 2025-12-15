@@ -51,3 +51,19 @@ def test_detect_regime_flags_degraded_when_history_missing():
     assert "missing=" in signal.reason
     assert "ma25_history" in signal.missing_fields
     assert "rsi6_history" in signal.missing_fields
+
+
+def test_detect_regime_returns_allowed_value():
+    tf = make_tf()
+    tf.ma25_history = [98.0, 98.2, 98.4]
+    tf.rsi6_history = [52.0, 54.0, 56.0]
+    snap = make_snap(tf)
+
+    signal = detect_regime(snap, Settings())
+
+    assert signal.regime in {
+        "trending",
+        "high_vol_ranging",
+        "low_vol_ranging",
+        "unknown",
+    }

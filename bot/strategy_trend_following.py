@@ -374,7 +374,6 @@ def build_trend_following_signal(
     }
 
     regime = regime_signal.regime
-    snap.market_mode = regime  # 写回 snap 以便外部展示/日志
 
     # 3) 判断是否 high_conf（用于 soft gate）
     high_conf = (

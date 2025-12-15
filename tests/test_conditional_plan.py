@@ -52,7 +52,6 @@ def _snapshot(price: float = 410.0, trend_label: str = "down") -> MarketSnapshot
         tf_1h=tf_1h,
         tf_15m=tf_15m,
         deriv=deriv,
-        market_mode="trending",
         regime="trending",
         regime_reason="trend intact",
         bids=120.0,
@@ -125,7 +124,7 @@ def test_valid_until_next_4h_close():
 
 def test_should_attempt_plan_when_edge_high_but_not_execute():
     snap = _snapshot(trend_label="down")
-    snap.market_mode = "high_vol_ranging"
+    snap.regime = "high_vol_ranging"
     snap.tf_15m.last_candle_close_utc = snap.tf_1h.last_candle_close_utc - timedelta(minutes=5)
     signal = _make_signal(1.0, 0.62, long_score=0.8, short_score=0.1)
 
@@ -155,3 +154,15 @@ def test_skip_reason_alignment_only_penalizes_not_blocks():
     debug = getattr(signal, "conditional_plan_debug", {})
     assert debug.get("skip_reason") is None
     assert debug.get("generated") is True
+
+
+def test_skip_when_regime_unknown():
+    snap = _snapshot()
+    snap.regime = "unknown"
+    signal = _make_signal(1.0, 0.6, long_score=0.7, short_score=0.2)
+
+    plan = build_conditional_plan(signal, snap, {})
+
+    assert plan is None
+    debug = getattr(signal, "conditional_plan_debug", {})
+    assert debug.get("skip_reason") == "SKIP_NO_BUILDER_PATH"

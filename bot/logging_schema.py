@@ -202,7 +202,6 @@ def build_signal_event(
         "regime": {
             "regime": snapshot.regime,
             "reason": snapshot.regime_reason,
-            "market_mode": snapshot.market_mode,
             "rsidev": snapshot.rsidev,
             "atrrel": snapshot.atrrel,
         },

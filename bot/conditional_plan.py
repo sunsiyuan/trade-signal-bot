@@ -296,7 +296,6 @@ def build_conditional_plan(signal: Any, snap: MarketSnapshot, settings: Any) -> 
             "alignment_ok": alignment_ok,
             "alignment_reason": alignment_reason,
             "setup_type": getattr(signal, "setup_type", None),
-            "market_mode": getattr(snap, "market_mode", None),
             "regime": getattr(snap, "regime", None),
             "direction_bias": {"long": long_score, "short": short_score},
         },
@@ -315,9 +314,9 @@ def build_conditional_plan(signal: Any, snap: MarketSnapshot, settings: Any) -> 
     if direction is None:
         return _finish(None, PlanSkipReason.SKIP_NO_DIRECTION_BIAS)
 
-    market_mode = getattr(snap, "market_mode", snap.regime)
-    allowed_modes = {"trending", "range", "high_vol_ranging", "low_vol_ranging"}
-    if market_mode not in allowed_modes and getattr(snap, "regime", None) not in allowed_modes:
+    regime = getattr(snap, "regime", None)
+    allowed_modes = {"trending", "high_vol_ranging", "low_vol_ranging"}
+    if regime not in allowed_modes:
         return _finish(None, PlanSkipReason.SKIP_NO_BUILDER_PATH)
 
     if signal.edge_confidence < watch_edge_conf:
