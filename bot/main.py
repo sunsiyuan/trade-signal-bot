@@ -265,7 +265,7 @@ def format_signal_detail(signal):
     if not snap:
         return f"{signal.symbol}: snapshot unavailable"
 
-    trade_conf = signal.trade_confidence or signal.confidence
+    trade_conf = signal.trade_confidence or 0.0
     edge_conf = signal.edge_confidence if hasattr(signal, "edge_confidence") else 0.0
     regime_icon, regime_cn = _regime_display(
         snap.regime,

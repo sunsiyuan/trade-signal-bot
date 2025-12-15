@@ -186,7 +186,7 @@ def build_mean_reversion_signal(
         return TradeSignal(
             symbol=snap.symbol,
             direction="long",
-            confidence=confidence,
+            trade_confidence=confidence,
             entry=price,
             tp1=tp1,
             tp2=tp2,
@@ -249,7 +249,7 @@ def build_mean_reversion_signal(
         return TradeSignal(
             symbol=snap.symbol,
             direction="short",
-            confidence=confidence,
+            trade_confidence=confidence,
             entry=price,
             tp1=tp1,
             tp2=tp2,

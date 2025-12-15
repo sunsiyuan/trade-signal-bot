@@ -89,7 +89,7 @@ def test_mean_reversion_allows_fallback_when_oi_missing():
     )
 
     assert signal is not None
-    assert signal.confidence == pytest.approx(0.6375)
+    assert signal.trade_confidence == pytest.approx(0.6375)
     assert signal.core_position_pct == pytest.approx(0.25)
     assert "OI missing → fallback mode" in signal.reason
 
@@ -142,7 +142,7 @@ def test_mean_reversion_triggers_with_oi_present():
     )
 
     assert signal is not None
-    assert signal.confidence > 0.6
+    assert signal.trade_confidence > 0.6
     assert "flushing out" in signal.reason
 
 
@@ -174,7 +174,7 @@ def test_liquidity_hunt_uses_fallback_when_oi_missing():
     )
 
     assert signal is not None
-    assert signal.confidence == 0.65
+    assert signal.trade_confidence == 0.65
     assert signal.core_position_pct == pytest.approx(0.25)
     assert "fallback_mode=1" in signal.reason
 
@@ -226,5 +226,5 @@ def test_liquidity_hunt_triggers_with_oi_spike():
     )
 
     assert signal is not None
-    assert signal.confidence == 0.75
+    assert signal.trade_confidence == 0.75
     assert "spike" in signal.reason
