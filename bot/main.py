@@ -44,7 +44,7 @@ def _regime_display(regime: str, trend_label: str) -> Tuple[str, str]:
             return "🟢", "上涨趋势"
         if trend_label == "down":
             return "🔻", "下跌趋势"
-        return "🟣", "趋势态势（方向未定）"
+        return "↔️", "趋势分歧"
     if regime_display == "high_vol_ranging":
         return "🌪️", "高波动震荡"
     if regime_display == "low_vol_ranging":
