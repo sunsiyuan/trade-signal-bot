@@ -187,3 +187,15 @@ class Settings:
             "near_miss_delta": 0.05,
         }
     )
+
+    # Price quantization for signal_id stability
+    price_quantization: dict = field(
+        default_factory=lambda: {
+            "BTC": 100,
+            "HYPE": 0.01,
+            "SOL": 0.1,
+            "ETH": 10,
+            "AAVE": 0.1,
+            "ZEC": 1,
+        }
+    )
