@@ -32,6 +32,29 @@ def _clamp01(value: float) -> float:
     return clamp(value, 0.0, 1.0)
 
 
+def _is_price_near_ma(close: float, ma_value: float, tolerance: float) -> bool:
+    """判断价格是否在给定均线的相对距离内。"""
+    if ma_value <= 0:
+        return False
+    return abs(close - ma_value) / ma_value <= tolerance
+
+
+def _near_trend_pullback(tf15, settings: Any) -> bool:
+    """价格是否回踩到关键均线附近。"""
+    tolerance = _get_tf_setting(settings, "high_conf_ma_proximity_pct", 0.005)
+    return _is_price_near_ma(tf15.close, tf15.ma7, tolerance) or _is_price_near_ma(
+        tf15.close, tf15.ma25, tolerance
+    )
+
+
+def _macd_hist_turning(tf15, direction: Direction, settings: Any) -> bool:
+    """利用 MACD 柱子方向作为“转向”近似判定。"""
+    threshold = _get_tf_setting(settings, "macd_turn_threshold", 0.0)
+    if direction == "short":
+        return tf15.macd_hist <= threshold or tf15.macd <= tf15.macd_signal
+    return tf15.macd_hist >= -threshold or tf15.macd >= tf15.macd_signal
+
+
 # -------------------------
 # 读取 trend_following 策略配置（Settings 或 dict）
 # -------------------------
@@ -234,13 +257,16 @@ def _high_conf_short(snap: MarketSnapshot, settings: Any) -> bool:
     """
     high_conf_short：用于触发 soft gate 的“高置信条件”
     默认规则：
-    - 15m RSI 极端过热（>= 80）
     - 4h 明确下跌，且 1h 不允许是 up（避免逆大趋势）
+    - 15m 回踩到 MA25/MA7 附近 + MACD 柱子转向向下
+    - RSI 过滤：使用更平滑的 RSI12 且阈值放宽到 70+
     - 可选：要求 liquidity_comment 以 "asks" 开头（卖压确实更重）
     """
     tf15 = snap.tf_15m
-    rsi_ok = tf15.rsi6 >= _get_tf_setting(settings, "rsi_extreme_short", 80)
+    rsi_ok = tf15.rsi12 >= _get_tf_setting(settings, "rsi_extreme_short", 70)
     trend_ok = snap.tf_4h.trend_label == "down" and snap.tf_1h.trend_label != "up"
+    pullback_ok = _near_trend_pullback(tf15, settings)
+    macd_turn_ok = _macd_hist_turning(tf15, "short", settings)
 
     if _get_tf_setting(settings, "require_liquidity_prefix_for_high_conf", True):
         liquidity_ok = (getattr(snap.deriv, "liquidity_comment", "") or "").lower().startswith(
@@ -249,19 +275,22 @@ def _high_conf_short(snap: MarketSnapshot, settings: Any) -> bool:
     else:
         liquidity_ok = True
 
-    return trend_ok and rsi_ok and liquidity_ok
+    return trend_ok and pullback_ok and macd_turn_ok and rsi_ok and liquidity_ok
 
 
 def _high_conf_long(snap: MarketSnapshot, settings: Any) -> bool:
     """
     high_conf_long：与 short 对称
-    - 15m RSI 极端超卖（<= 20）
     - 4h 上涨，且 1h 不允许是 down（避免逆大趋势）
+    - 15m 回踩到 MA25/MA7 附近 + MACD 柱子转向向上
+    - RSI 过滤：使用更平滑的 RSI12 且阈值放宽到 30-
     - 可选：要求 liquidity_comment 以 "bids" 开头（买压确实更重）
     """
     tf15 = snap.tf_15m
-    rsi_ok = tf15.rsi6 <= _get_tf_setting(settings, "rsi_extreme_long", 20)
+    rsi_ok = tf15.rsi12 <= _get_tf_setting(settings, "rsi_extreme_long", 30)
     trend_ok = snap.tf_4h.trend_label == "up" and snap.tf_1h.trend_label != "down"
+    pullback_ok = _near_trend_pullback(tf15, settings)
+    macd_turn_ok = _macd_hist_turning(tf15, "long", settings)
 
     if _get_tf_setting(settings, "require_liquidity_prefix_for_high_conf", True):
         liquidity_ok = (getattr(snap.deriv, "liquidity_comment", "") or "").lower().startswith(
@@ -270,7 +299,7 @@ def _high_conf_long(snap: MarketSnapshot, settings: Any) -> bool:
     else:
         liquidity_ok = True
 
-    return trend_ok and rsi_ok and liquidity_ok
+    return trend_ok and pullback_ok and macd_turn_ok and rsi_ok and liquidity_ok
 
 
 # =========================

@@ -114,7 +114,7 @@ def test_high_conf_boosts_confidence_and_size():
 
     tf4h = make_tf("4h", 100, 101, 102, 99, 65, 60, 55, 0.0, 0.0, 0.0, 1.0, 1000, "up")
     tf1h = make_tf("1h", 100, 101, 102, 99, 55, 55, 55, 0.0, 0.0, 0.0, 1.0, 800, "up")
-    tf15 = make_tf("15m", 90, 95, 97, 95, 20, 25, 28, 0.0, 0.0, 0.0, 1.0, 600, "range")
+    tf15 = make_tf("15m", 101, 101, 101, 95, 20, 25, 28, 0.02, 0.01, 0.01, 1.0, 600, "range")
     deriv = DerivativeIndicators(
         funding=-0.05,
         open_interest=100,
