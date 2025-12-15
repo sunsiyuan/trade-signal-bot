@@ -14,17 +14,6 @@ from .regime_detector import detect_regime, RegimeSignal
 from .strategy_trend_following import build_trend_following_signal
 
 
-# -------------------------
-# 工具函数：数值裁剪
-# -------------------------
-def clamp(value: float, min_value: float = 0.0, max_value: float = 1.0) -> float:
-    """
-    将 value 裁剪到 [min_value, max_value] 区间内
-    常用于把各种指标归一化到 0~1
-    """
-    return max(min_value, min(max_value, value))
-
-
 # =========================
 # TradeSignal：最终输出给“执行层 / Telegram / 人工 review”的对象
 # =========================
@@ -128,106 +117,24 @@ class SignalEngine:
         )
 
     # =========================
-    # Range regime：机会评分器
-    # =========================
-    def _range_setup_score(self, snap: MarketSnapshot) -> Dict[str, float]:
-        """
-        只做“机会强度评估”，不直接下单
-        """
-
-        # --- 1h RSI 偏离 50：判断是否靠近区间边缘 ---
-        rsi1h = snap.rsi_1h if snap.rsi_1h is not None else snap.tf_1h.rsi6
-        abs_dev = abs(rsi1h - 50.0)
-        edge = clamp((abs_dev - 5.0) / (15.0 - 5.0), 0.0, 1.0)
-
-        # --- 15m RSI：短周期超买 / 超卖 ---
-        rsi15 = snap.rsi_15m if snap.rsi_15m is not None else snap.tf_15m.rsi6
-        oversold = clamp((35 - rsi15) / 15, 0.0, 1.0)
-        overbought = clamp((rsi15 - 65) / 15, 0.0, 1.0)
-
-        # --- 1h RSI 二次确认 ---
-        confirm_long = clamp((45 - rsi1h) / 15, 0.0, 1.0)
-        confirm_short = clamp((rsi1h - 55) / 15, 0.0, 1.0)
-
-        # --- 波动率（ATR relative） ---
-        if snap.atrrel is None:
-            atrrel = None
-            tape = 0.5                # 缺失时给中性，不偏多
-            atrrel_missing = True
-            tape_reason = "atrrel_missing_fallback"
-        else:
-            atrrel = snap.atrrel
-            tape = clamp((0.02 - atrrel) / (0.02 - 0.008), 0.0, 1.0)
-            atrrel_missing = False
-            tape_reason = "atrrel_based"
-
-        # --- 订单簿倾斜 ---
-        asks = snap.asks if snap.asks is not None else 0.0
-        bids = snap.bids if snap.bids is not None else 0.0
-        ob = clamp((bids - asks) / (bids + asks + 1e-9), -1.0, 1.0)
-        ob_long = clamp(ob, 0.0, 1.0)
-        ob_short = clamp(-ob, 0.0, 1.0)
-
-        # --- 中位惩罚（靠近中线 = 不做） ---
-        mid_penalty = 1 - edge
-
-        # --- 综合评分 ---
-        long_score = edge * (
-            0.45 * oversold +
-            0.20 * confirm_long +
-            0.20 * tape +
-            0.15 * ob_long
-        )
-        short_score = edge * (
-            0.45 * overbought +
-            0.20 * confirm_short +
-            0.20 * tape +
-            0.15 * ob_short
-        )
-
-        return {
-            "edge": round(edge, 4),
-            "long": round(long_score, 4),
-            "short": round(short_score, 4),
-            "mid_penalty": round(mid_penalty, 4),
-            "abs_dev": round(abs_dev, 4),
-            "tape": round(tape, 4),
-            "ob": round(ob, 4),
-            "atrrel": atrrel,
-            "atrrel_missing": atrrel_missing,
-            "tape_reason": tape_reason,
-        }
-
-    # =========================
     # Range router：LH / MR
     # =========================
     def _decide_range(self, snap: MarketSnapshot) -> TradeSignal:
         from .strategy_liquidity_hunt import build_liquidity_hunt_signal
         from .strategy_mean_reversion import build_mean_reversion_signal
 
-        scores = self._range_setup_score(snap)
-        edge = scores["edge"]
-        best = max(scores["long"], scores["short"])
         regime = getattr(snap, "regime", None)
-
-        thresholds = {"edge_min": 0.35, "best_min": 0.55}
 
         # --- 高波动震荡：优先 LH ---
         if regime == "high_vol_ranging":
             lh = build_liquidity_hunt_signal(snap, regime, self.settings)
             if lh:
-                lh.edge_confidence = max(edge, getattr(lh, "edge_confidence", 0.0), best)
-                lh.debug_scores = scores
-                lh.thresholds_snapshot = thresholds
                 return lh
 
         # --- 所有震荡：MR ---
         if regime in ("high_vol_ranging", "low_vol_ranging"):
             mr = build_mean_reversion_signal(snap, regime, self.settings)
             if mr:
-                mr.edge_confidence = max(edge, getattr(mr, "edge_confidence", 0.0), best)
-                mr.debug_scores = scores
-                mr.thresholds_snapshot = thresholds
                 return mr
 
         # --- 无策略命中 ---
@@ -235,16 +142,12 @@ class SignalEngine:
             symbol=snap.symbol,
             direction="none",
             trade_confidence=0.0,
-            edge_confidence=max(edge, best),
+            edge_confidence=0.0,
             setup_type="none",
-            reason=(
-                "Range regime but no LH/MR trigger | "
-                f"edge={edge:.2f} best={best:.2f}"
-            ),
+            reason="Range regime but no LH/MR trigger",
             snapshot=snap,
-            debug_scores=scores,
             rejected_reasons=["no_range_strategy_triggered"],
-            thresholds_snapshot=thresholds,
+            debug_scores={"long": 0.0, "short": 0.0},
         )
 
     # =========================
