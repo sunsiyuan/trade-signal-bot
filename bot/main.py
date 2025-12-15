@@ -230,7 +230,7 @@ def _format_action_event_message(event: str, plan: Dict, reason: str, signal_id:
 
 def _action_label(action: str) -> str:
     mapping = {
-        "WATCH": "👀 观察",
+        "WATCH": "🧊 观望",
         "LIMIT_4H": "⏳ 限价4H",
         "EXECUTE_NOW": "⚡️ 立即执行",
         "NONE": "⏸️ 暂无动作",
