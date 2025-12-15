@@ -467,9 +467,9 @@ def build_trend_following_signal(
             trade_confidence=trade_conf,
             edge_confidence=round(trend_bias_conf, 2),
             setup_type="none",
-            reason=(f"信号待确认：等待价格触发 {trigger:.2f} 以执行 {bias} 入场"),
-            entry=trigger,  # 注意：这里的 entry 实际是 trigger（等待价）
-            snapshot=snap,
+        reason=(f"信号待确认：等待价格触发 {trigger:.2f} 以执行 {bias} 入场"),
+        entry=trigger,  # 注意：这里的 entry 实际是 trigger（等待价）
+        snapshot=snap,
             debug_scores={**scores, "trend_bias_conf": round(trend_bias_conf, 4)},
             rejected_reasons=["price_not_triggered"],
             thresholds_snapshot=thresholds,
@@ -511,7 +511,6 @@ def build_trend_following_signal(
             f"score long={long_score:.2f} / short={short_score:.2f}"
         ),
         entry=entry,
-        entry_range=[trigger],  # 当前只放一个触发价，留接口将来扩展区间入场
         tp1=tp1,
         tp2=tp2,
         tp3=tp3,

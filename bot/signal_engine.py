@@ -46,7 +46,6 @@ class TradeSignal:
 
     # ---- 交易点位 ----
     entry: Optional[float] = None
-    entry_range: Optional[List[float]] = None
     tp1: Optional[float] = None
     tp2: Optional[float] = None
     tp3: Optional[float] = None

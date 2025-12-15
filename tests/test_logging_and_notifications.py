@@ -65,7 +65,6 @@ def _make_signal(snapshot: MarketSnapshot, **kwargs) -> TradeSignal:
         edge_confidence=0.9,
         setup_type="trend_long",
         entry=99.0,
-        entry_range=[99.0, 100.0],
         tp1=101.0,
         tp2=102.0,
         tp3=103.0,

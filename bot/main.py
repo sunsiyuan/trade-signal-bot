@@ -81,11 +81,7 @@ def _format_levels(signal) -> str:
         return "-"
 
     parts: List[str] = []
-    if signal.entry_range and len(signal.entry_range) > 1:
-        parts.append(f"E {signal.entry_range[0]:.4f}-{signal.entry_range[-1]:.4f}")
-    elif signal.entry_range:
-        parts.append(f"E {signal.entry_range[0]:.4f}")
-    elif signal.entry:
+    if signal.entry:
         parts.append(f"E {signal.entry:.4f}")
 
     tps = [tp for tp in [signal.tp1, signal.tp2, signal.tp3] if tp is not None]
