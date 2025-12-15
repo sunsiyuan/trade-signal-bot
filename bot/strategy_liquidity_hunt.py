@@ -446,6 +446,7 @@ def build_execution_intent_lh(
         entry_reason="LH_sweep_or_wall",
         invalidation_price=signal.sl,
         atr_4h=resolve_atr_4h(snap),
+        ttl_hours=1,
         reason=signal.reason,
         debug=signal.debug_scores,
     )

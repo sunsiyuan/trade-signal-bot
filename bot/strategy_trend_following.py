@@ -559,6 +559,7 @@ def build_execution_intent_tf(
         entry_reason="TF_trigger",
         invalidation_price=signal.sl,
         atr_4h=resolve_atr_4h(snap),
+        ttl_hours=4,
         reason=signal.reason,
         debug=signal.debug_scores,
     )

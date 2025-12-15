@@ -54,7 +54,7 @@ def build_conditional_plan_from_intent(
         and current is not None
         and entry_price is not None
         and atr
-        and abs(current - entry_price) <= 0.2 * atr
+        and abs(current - entry_price) <= 0.35 * atr
     ):
         return ConditionalPlan(
             execution_mode="EXECUTE_NOW",
@@ -66,7 +66,7 @@ def build_conditional_plan_from_intent(
         )
 
     if atr and current is not None and entry_price is not None:
-        if abs(current - entry_price) <= 1.0 * atr:
+        if abs(current - entry_price) <= 1.5 * atr:
             valid_until = now_plus_hours(intent.ttl_hours)
             return ConditionalPlan(
                 execution_mode="PLACE_LIMIT_4H",
