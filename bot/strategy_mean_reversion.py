@@ -333,6 +333,7 @@ def build_execution_intent_mr(
         entry_reason="MR_MA25",
         invalidation_price=signal.sl,
         atr_4h=resolve_atr_4h(snap),
+        ttl_hours=2,
         reason=signal.reason,
         debug=signal.debug_scores,
     )
