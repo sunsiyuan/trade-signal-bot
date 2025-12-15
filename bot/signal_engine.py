@@ -1,9 +1,13 @@
 # =========================
 # signal_engine.py
 # =========================
+from __future__ import annotations
 
 # 标准库：数据类 & 类型标注
+import hashlib
+import json
 from dataclasses import dataclass
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional, List, Dict
 
 # 项目内依赖
@@ -25,6 +29,57 @@ from .strategy_trend_following import (
 )
 
 
+def _get_price_step(symbol: str, settings: Optional[Settings]) -> Decimal:
+    base = symbol.split("/")[0] if symbol else ""
+    mapping = getattr(settings, "price_quantization", {}) if settings else {}
+    step = mapping.get(base)
+    if step is None:
+        return Decimal("0.01")
+    return Decimal(str(step))
+
+
+def _quantize_price(
+    value: Optional[float], symbol: str, settings: Optional[Settings]
+) -> Optional[float]:
+    if value is None:
+        return None
+
+    step = _get_price_step(symbol, settings)
+    quantized = (Decimal(value) / step).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    return float(quantized * step)
+
+
+def build_signal_id(signal: TradeSignal, snap: MarketSnapshot, settings: Optional[Settings] = None) -> str:
+    intent = getattr(signal, "execution_intent", None)
+    entry_price = (
+        getattr(intent, "entry_price", None)
+        if intent is not None
+        else getattr(signal, "entry", None)
+    )
+    invalidation_price = (
+        getattr(intent, "invalidation_price", None)
+        if intent is not None
+        else getattr(signal, "sl", None)
+    )
+
+    payload = {
+        "symbol": signal.symbol,
+        "setup": getattr(signal, "setup_type", None)
+        or getattr(signal, "strategy", None)
+        or "none",
+        "direction": signal.direction,
+        "entry_price": _quantize_price(entry_price, signal.symbol, settings),
+        "invalidation_price": _quantize_price(
+            invalidation_price, signal.symbol, settings
+        ),
+        "regime": getattr(snap, "regime", None),
+    }
+
+    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()
+    return digest[:12]
+
+
 # =========================
 # TradeSignal：最终输出给“执行层 / Telegram / 人工 review”的对象
 # =========================
@@ -35,6 +90,7 @@ class TradeSignal:
     # ---- 基本信息 ----
     symbol: str
     direction: Direction            # "long" / "short" / "none"
+    signal_id: Optional[str] = None
 
     # ---- 解释 & 置信度 ----
     reason: str = ""                # 人类可读的解释
@@ -153,24 +209,26 @@ class SignalEngine:
 
         if regime == "trending":
             # 趋势行情 → 趋势跟随策略
-            return build_trend_following_signal(
+            signal = build_trend_following_signal(
+                snap,
+                regime_signal,
+                min_confidence=self.min_confidence,
+                settings=self.settings,
+            )
+        elif regime in ("high_vol_ranging", "low_vol_ranging"):
+            # 震荡行情 → range router
+            signal = self._decide_range(snap)
+        else:
+            # 兜底：未知 regime 也按趋势处理（防止系统无输出）
+            signal = build_trend_following_signal(
                 snap,
                 regime_signal,
                 min_confidence=self.min_confidence,
                 settings=self.settings,
             )
 
-        if regime in ("high_vol_ranging", "low_vol_ranging"):
-            # 震荡行情 → range router
-            return self._decide_range(snap)
-
-        # 兜底：未知 regime 也按趋势处理（防止系统无输出）
-        return build_trend_following_signal(
-            snap,
-            regime_signal,
-            min_confidence=self.min_confidence,
-            settings=self.settings,
-        )
+        signal.signal_id = build_signal_id(signal, snap, self.settings)
+        return signal
 
     # =========================
     # Range router：LH / MR
@@ -236,4 +294,5 @@ class SignalEngine:
             else:
                 signal.reason = f"[{regime_label}] {signal.reason}"
 
+        signal.signal_id = build_signal_id(signal, snap)
         return signal

@@ -3,7 +3,7 @@ import json
 import os
 from dataclasses import asdict, is_dataclass, replace
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import ccxt
 
@@ -12,6 +12,7 @@ from .data_client import HyperliquidDataClient
 from .logging_schema import build_signal_event, write_jsonl_event
 from .notify import Notifier
 from .signal_engine import SignalEngine
+from .state_store import load_state, save_state
 
 
 def _beijing_now() -> datetime:
@@ -165,6 +166,76 @@ def _bias_from_scores(signal) -> str:
     if short_score is None or (long_score is not None and long_score >= short_score):
         return "LONG"
     return "SHORT"
+
+
+def _normalize_execution_mode(plan: Optional[Dict]) -> str:
+    mode = (plan or {}).get("execution_mode") or "WATCH_ONLY"
+    if mode == "WATCH_ONLY":
+        return "WATCH"
+    if mode == "PLACE_LIMIT_4H":
+        return "PLACE_LIMIT_4H"
+    if mode == "EXECUTE_NOW":
+        return "EXECUTE_NOW"
+    return "WATCH"
+
+
+def _parse_dt(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except Exception:
+        return None
+
+
+def _event_sent(sent_events: Dict[str, List[str]], signal_id: Optional[str], event: str) -> bool:
+    if not signal_id:
+        return False
+    return event in sent_events.get(signal_id, [])
+
+
+def _mark_event_sent(sent_events: Dict[str, List[str]], signal_id: Optional[str], event: str) -> None:
+    if not signal_id:
+        return
+    sent_events.setdefault(signal_id, [])
+    if event not in sent_events[signal_id]:
+        sent_events[signal_id].append(event)
+
+
+def format_summary_compact(symbol, snapshot, action: str) -> str:
+    mark_price = _extract_mark_price(snapshot)
+    fallback_price = getattr(snapshot.tf_15m, "close", None) if snapshot else None
+    price = _format_price(mark_price if mark_price is not None else fallback_price)
+    regime_icon, regime_cn = _regime_display(
+        getattr(snapshot, "regime", ""),
+        getattr(snapshot.tf_4h, "trend_label", "") if snapshot else "",
+    )
+    return f"{symbol} | 💰 {price} | {regime_icon}{regime_cn} | {_action_label(action)}"
+
+
+def _format_action_event_message(event: str, plan: Dict, reason: str, signal_id: str) -> str:
+    entry = _format_price(plan.get("entry_price"))
+    invalidation = _format_price(plan.get("invalidation_price"))
+    return "\n".join(
+        [
+            f"【{event}】交易动作更新",
+            f"ID: {signal_id}",
+            f"标的: {plan.get('symbol')} | 方向: {plan.get('direction', '').upper()} | 模式: {plan.get('execution_mode')}",
+            f"入场: {entry} | 失效: {invalidation}",
+            f"市场态势: {plan.get('regime', 'unknown')}",
+            f"原因: {reason}",
+        ]
+    )
+
+
+def _action_label(action: str) -> str:
+    mapping = {
+        "WATCH": "👀 观察",
+        "LIMIT_4H": "⏳ 限价4H",
+        "EXECUTE_NOW": "⚡️ 立即执行",
+        "NONE": "⏸️ 暂无动作",
+    }
+    return mapping.get(action, "⏸️ 暂无动作")
 
 
 def is_actionable(signal, snapshot, settings: Settings):
@@ -373,6 +444,9 @@ def main():
     base_settings = Settings()
     tracked = base_settings.tracked_symbols or [base_settings.symbol]
 
+    state_path = os.path.join(".state", "state.json")
+    state = load_state(state_path)
+
     exchange = ccxt.hyperliquid({"enableRateLimit": True})
     exchange.load_markets()
 
@@ -389,6 +463,7 @@ def main():
     )
 
     signals = []
+    snapshots = {}
     for symbol in tracked:
         symbol_settings = replace(base_settings, symbol=symbol)
         client = HyperliquidDataClient(
@@ -398,73 +473,146 @@ def main():
         signal = engine.generate_signal(snapshot)
         emit_multi_tf_log(snapshot, signal, symbol_settings, exchange_id=exchange.id)
         signals.append(signal)
+        snapshots[symbol] = snapshot
 
-    beijing_line = _beijing_now().strftime("%Y-%m-%d %H:%M") + " (UTC+8)"
     summary_lines = []
-    action_lines = []
-    execute_lines = []
-    conditional_lines = []
+    action_messages = []
+    execute_now_messages = []
+    now = datetime.now(timezone.utc)
 
+    # Step 1: reconcile existing active plans
+    for symbol, plan in list(state.get("active_plans", {}).items()):
+        signal_id = plan.get("signal_id")
+        snap = snapshots.get(symbol)
+        mark_price = _extract_mark_price(snap)
+        regime = getattr(snap, "regime", None) if snap else None
+
+        event = None
+        reason = ""
+        valid_until = _parse_dt(plan.get("valid_until_utc"))
+        if valid_until and now > valid_until:
+            event = "EXPIRED"
+            reason = "超过有效期，撤销计划单"
+        elif mark_price is not None and plan.get("invalidation_price") is not None:
+            if plan.get("direction") == "long" and mark_price <= plan.get("invalidation_price"):
+                event = "INVALIDATED"
+                reason = "价格跌破失效位"
+            elif plan.get("direction") == "short" and mark_price >= plan.get("invalidation_price"):
+                event = "INVALIDATED"
+                reason = "价格突破失效位"
+
+        if event is None and regime and plan.get("regime") and plan.get("regime") != regime:
+            event = "REGIME_CHANGED"
+            reason = f"Regime {plan.get('regime')} → {regime}"
+
+        if event:
+            if not _event_sent(state.get("sent_events", {}), signal_id, event):
+                plan_for_msg = {**plan, "symbol": symbol}
+                action_messages.append(
+                    _format_action_event_message(event, plan_for_msg, reason, signal_id or "")
+                )
+                _mark_event_sent(state.setdefault("sent_events", {}), signal_id, event)
+            state.get("active_plans", {}).pop(symbol, None)
+
+    # Step 2: handle new signals
     for sig in signals:
-        summary_lines.append(format_summary_line(sig.symbol, sig.snapshot, sig))
-        actionable, action_level, bias = is_actionable(sig, sig.snapshot, base_settings)
-        if actionable:
-            action_lines.append(
-                format_action_line(sig.symbol, sig.snapshot, sig, action_level, bias)
-            )
-        if action_level == 'EXECUTE':
-            execute_lines.append(
-                format_action_line(sig.symbol, sig.snapshot, sig, action_level, bias)
-            )
+        snap = sig.snapshot
+        plan = _plan_dict(getattr(sig, "conditional_plan", None)) or {}
+        mode = _normalize_execution_mode(plan)
+        current_action = "NONE"
 
-        conditional_line = format_conditional_plan_line(sig)
-        if conditional_line:
-            conditional_lines.append(conditional_line)
+        entry_price = plan.get("entry_price")
+        invalidation_price = None
+        if getattr(sig, "execution_intent", None):
+            invalidation_price = sig.execution_intent.invalidation_price
+        elif hasattr(sig, "sl"):
+            invalidation_price = getattr(sig, "sl", None)
 
-    summary_message = "\n".join([beijing_line] + summary_lines)
+        base_plan = {
+            "signal_id": getattr(sig, "signal_id", None),
+            "symbol": sig.symbol,
+            "execution_mode": mode,
+            "direction": plan.get("direction") or sig.direction,
+            "entry_price": entry_price,
+            "invalidation_price": invalidation_price,
+            "regime": getattr(snap, "regime", None) if snap else None,
+            "valid_until_utc": plan.get("valid_until_utc"),
+            "created_utc": now.isoformat(),
+            "status": "ACTIVE",
+        }
 
+        if mode == "WATCH":
+            current_action = "WATCH"
+        elif mode == "PLACE_LIMIT_4H":
+            current_action = "LIMIT_4H"
+            existing = state.get("active_plans", {}).get(sig.symbol)
+            if not existing or existing.get("signal_id") != base_plan.get("signal_id"):
+                if not _event_sent(state.get("sent_events", {}), base_plan.get("signal_id"), "CREATED"):
+                    reason = plan.get("explain") or sig.reason or "创建4H限价计划"
+                    action_messages.append(
+                        _format_action_event_message(
+                            "CREATED",
+                            base_plan,
+                            reason,
+                            base_plan.get("signal_id") or "",
+                        )
+                    )
+                    _mark_event_sent(state.setdefault("sent_events", {}), base_plan.get("signal_id"), "CREATED")
+                state.setdefault("active_plans", {})[sig.symbol] = base_plan
+        elif mode == "EXECUTE_NOW":
+            current_action = "EXECUTE_NOW"
+            reason = plan.get("explain") or sig.reason or "立即执行"
+            if not _event_sent(state.get("sent_events", {}), base_plan.get("signal_id"), "EXECUTE_NOW"):
+                action_messages.append(
+                    _format_action_event_message(
+                        "EXECUTE_NOW",
+                        base_plan,
+                        reason,
+                        base_plan.get("signal_id") or "",
+                    )
+                )
+                execute_now_messages.append(
+                    _format_action_event_message(
+                        "EXECUTE_NOW",
+                        base_plan,
+                        reason,
+                        base_plan.get("signal_id") or "",
+                    )
+                )
+                _mark_event_sent(state.setdefault("sent_events", {}), base_plan.get("signal_id"), "EXECUTE_NOW")
+
+        summary_lines.append(format_summary_compact(sig.symbol, snap, current_action))
+
+    summary_message = "\n".join(summary_lines)
     print(summary_message)
-
-    action_message = (
-        "\n".join([beijing_line] + action_lines) if action_lines else None
-    )
-    execute_message = (
-        "\n".join([beijing_line] + execute_lines) if execute_lines else None
-    )
-    conditional_message = (
-        "\n\n".join([beijing_line] + conditional_lines) if conditional_lines else None
-    )
 
     action_token = base_settings.telegram_action_token
     action_chat = base_settings.telegram_action_chat_id
-
     summary_token = base_settings.telegram_summary_token
     summary_chat = base_settings.telegram_summary_chat_id
 
     results = {}
-    if action_message and action_token and action_chat:
-        results["telegram_action"] = notifier.send_telegram(
-            action_message, token=action_token, chat_id=action_chat
-        )
-
-    if summary_token and summary_chat:
+    if summary_token and summary_chat and summary_message:
         results["telegram_summary"] = notifier.send_telegram(
             summary_message, token=summary_token, chat_id=summary_chat
         )
 
-    if conditional_message and summary_token and summary_chat:
-        results["telegram_conditional"] = notifier.send_telegram(
-            conditional_message, token=summary_token, chat_id=summary_chat
+    if action_messages and action_token and action_chat:
+        results["telegram_action"] = notifier.send_telegram(
+            "\n\n".join(action_messages), token=action_token, chat_id=action_chat
         )
 
-    if execute_message and (notifier.ftqq_key or notifier.webhook_url):
+    if execute_now_messages and (notifier.ftqq_key or notifier.webhook_url):
+        combined = "\n\n".join(execute_now_messages)
         results.update(
             notifier.send(
-                message=execute_message,
+                message=combined,
                 title="交易执行信号",
                 include_ftqq=bool(notifier.ftqq_key),
             )
         )
+
+    save_state(state_path, state)
 
     if results:
         print("Notification results:", results)
