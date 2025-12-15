@@ -213,7 +213,6 @@ def build_signal_event(
             "edge_confidence": signal.edge_confidence,
             "conditional_plan": signal.conditional_plan if signal.conditional_plan is not None else None,
             "entry": signal.entry,
-            "entry_range": signal.entry_range or [],
             "tp": {
                 "tp1": signal.tp1,
                 "tp2": signal.tp2,
