@@ -397,11 +397,11 @@ def build_trend_following_signal(
     if confidence < min_confidence:
         from .signal_engine import TradeSignal
 
+        trade_conf = round(confidence, 2)
         return TradeSignal(
             symbol=snap.symbol,
             direction="none",
-            confidence=round(confidence, 2),
-            trade_confidence=round(confidence, 2),
+            trade_confidence=trade_conf,
             edge_confidence=round(trend_bias_conf, 2),
             setup_type="none",
             reason=(
@@ -427,11 +427,11 @@ def build_trend_following_signal(
     if regime != "trending" and confidence < 0.8:
         from .signal_engine import TradeSignal
 
+        trade_conf = round(confidence, 2)
         return TradeSignal(
             symbol=snap.symbol,
             direction="none",
-            confidence=round(confidence, 2),
-            trade_confidence=round(confidence, 2),
+            trade_confidence=trade_conf,
             edge_confidence=round(trend_bias_conf, 2),
             setup_type="none",
             reason=(
@@ -460,11 +460,11 @@ def build_trend_following_signal(
     if not price_crossed:
         from .signal_engine import TradeSignal
 
+        trade_conf = round(confidence, 2)
         return TradeSignal(
             symbol=snap.symbol,
             direction="none",
-            confidence=round(confidence, 2),
-            trade_confidence=round(confidence, 2),
+            trade_confidence=trade_conf,
             edge_confidence=round(trend_bias_conf, 2),
             setup_type="none",
             reason=(f"信号待确认：等待价格触发 {trigger:.2f} 以执行 {bias} 入场"),
@@ -499,11 +499,12 @@ def build_trend_following_signal(
     # 10) 输出最终 TradeSignal（可执行）
     from .signal_engine import TradeSignal
 
+    trade_conf = round(confidence, 2)
+
     return TradeSignal(
         symbol=snap.symbol,
         direction=bias,
-        confidence=round(confidence, 2),
-        trade_confidence=round(confidence, 2),
+        trade_confidence=trade_conf,
         setup_type="trend_short" if bias == "short" else "trend_long",
         reason=(
             f"{regime} 模式下触发确认价，按 R 结构下单，TP/SL 动态；"

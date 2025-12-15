@@ -38,7 +38,6 @@ class TradeSignal:
 
     # ---- 解释 & 置信度 ----
     reason: str = ""                # 人类可读的解释
-    confidence: float = 0.0         # 旧字段（兼容历史）
     trade_confidence: float = 0.0   # 是否值得“采取行动”（胜率感）
     edge_confidence: float = 0.0    # 当前是否处在“好位置 / 边缘”（机会强度）
 
@@ -66,17 +65,6 @@ class TradeSignal:
     # ---- 条件单计划 ----
     conditional_plan: Optional[Dict] = None
     conditional_plan_debug: Optional[Dict] = None
-
-    def __post_init__(self):
-        """
-        兼容旧字段：
-        - 如果只填了 confidence → 同步到 trade_confidence
-        - 如果只填了 trade_confidence → 同步到 confidence
-        """
-        if self.trade_confidence == 0 and self.confidence:
-            self.trade_confidence = self.confidence
-        if self.confidence == 0 and self.trade_confidence:
-            self.confidence = self.trade_confidence
 
 
 # =========================

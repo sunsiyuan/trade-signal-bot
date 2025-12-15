@@ -139,7 +139,7 @@ def test_missing_fields_trigger_fallback_reason():
 
     assert signal is not None
     assert "lh_missing" in signal.reason
-    assert signal.confidence == 0.35
+    assert signal.trade_confidence == 0.35
 
 
 def test_missing_fields_block_signal_when_disabled():
@@ -191,4 +191,4 @@ def test_positive_liquidity_hunt_trigger():
 
     assert signal is not None
     assert signal.direction == "short"
-    assert signal.confidence == 0.75
+    assert signal.trade_confidence == 0.75
