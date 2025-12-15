@@ -93,6 +93,10 @@ def detect_regime(snap: MarketSnapshot, settings) -> RegimeSignal:
     # 趋势判定阈值：MA 相对斜率绝对值 >= 该值 → trending（默认 0.0015）
     trend_ma_angle_min = _get_nested(settings, "regime", "trend_ma_angle_min", 0.0015)
 
+    # 弱趋势降级阈值：MA 斜率过小或振荡次数过少，认为趋势不足（默认 0.001 / 1）
+    min_trend_ma_angle = _get_nested(settings, "regime", "min_trend_ma_angle", 0.001)
+    max_trend_osc = _get_nested(settings, "regime", "max_trend_osc", 1)
+
     # ATR 相对波动阈值：>= 0.015 认为“高波动震荡”
     high_vol_atr_rel = _get_nested(settings, "regime", "high_vol_atr_rel", 0.015)
 
@@ -212,6 +216,17 @@ def detect_regime(snap: MarketSnapshot, settings) -> RegimeSignal:
         regime = "trending"
 
     # =========================
+    # 8.5) 弱趋势降级：trending 但趋势强度不足 → high_vol_ranging
+    # =========================
+    weak_trend = (abs(ma_angle) < min_trend_ma_angle) or (osc_count <= max_trend_osc)
+
+    if regime == "trending" and weak_trend:
+        regime = "high_vol_ranging"
+        weak_trend_overridden = True
+    else:
+        weak_trend_overridden = False
+
+    # =========================
     # 9) 生成 reason 字符串（用于输出/调试）
     # =========================
     # degraded 时会额外带 missing 字段，方便你定位“为什么 regime 不稳定”
@@ -220,6 +235,9 @@ def detect_regime(snap: MarketSnapshot, settings) -> RegimeSignal:
         f"tf={main_tf} ma_angle={ma_angle:.4f} atr_rel={atr_rel:.4f} "
         f"rsi_avg_dev={rsi_avg_dev:.2f} osc_count={osc_count}{dq}"
     )
+
+    if weak_trend_overridden:
+        reason += " | weak_trend_override=1"
 
     # =========================
     # 10) 返回 RegimeSignal
