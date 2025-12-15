@@ -90,8 +90,8 @@ def detect_regime(snap: MarketSnapshot, settings) -> RegimeSignal:
     # 主周期：在哪个 TF 上做 regime 判定（默认 1h）
     main_tf = _get_nested(settings, "regime", "main_tf", "1h")
 
-    # 趋势判定阈值：MA 相对斜率绝对值 >= 该值 → trending（默认 0.0015）
-    trend_ma_angle_min = _get_nested(settings, "regime", "trend_ma_angle_min", 0.0015)
+    # 趋势判定阈值：MA 相对斜率绝对值 >= 该值 → trending（默认 0.0008）
+    trend_ma_angle_min = _get_nested(settings, "regime", "trend_ma_angle_min", 0.0008)
 
     # 弱趋势降级阈值：MA 斜率过小或振荡次数过少，认为趋势不足（默认 0.001 / 1）
     min_trend_ma_angle = _get_nested(settings, "regime", "min_trend_ma_angle", 0.001)
@@ -193,8 +193,8 @@ def detect_regime(snap: MarketSnapshot, settings) -> RegimeSignal:
         elif atr_rel <= low_vol_atr_rel:
             regime = "low_vol_ranging"
         else:
-            # 中间地带：当前默认也算 high_vol_ranging（偏激进）
-            regime = "high_vol_ranging"
+            # 中间地带：保持中性，判为 low_vol_ranging
+            regime = "low_vol_ranging"
 
     # =========================
     # 8) 第二阶段：用 RSI 行为“修正” regime（非常关键）

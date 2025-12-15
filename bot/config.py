@@ -103,7 +103,7 @@ class Settings:
     regime: dict = field(
         default_factory=lambda: {
             "main_tf": "1h",
-            "trend_ma_angle_min": 0.0013,
+            "trend_ma_angle_min": 0.0008,
             "min_trend_ma_angle": 0.001,
             "high_vol_atr_rel": 0.015,
             "low_vol_atr_rel": 0.006,
