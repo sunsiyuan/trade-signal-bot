@@ -54,6 +54,10 @@ def _get_nested(settings, group: str, key: str, default):
     return default
 
 
+def _clamp(value: float, min_value: float = 0.0, max_value: float = 1.0) -> float:
+    return max(min_value, min(max_value, value))
+
+
 # -------------------------
 # LH 所依赖的关键字段集合（概念层面）
 # 注：这里并没有直接用这个集合做校验，而是作为“文档/约束提示”
@@ -215,6 +219,10 @@ def build_liquidity_hunt_signal(
     near_swing_high = abs(distance_high_pct) <= price_proximity_pct * 100
     near_swing_low = abs(distance_low_pct) <= price_proximity_pct * 100
 
+    # score 化的接近程度（0~1），便于方向 bias
+    near_high_score = _clamp(1 - abs(distance_high_pct) / (price_proximity_pct * 100 + 1e-9)) if near_swing_high else 0.0
+    near_low_score = _clamp(1 - abs(distance_low_pct) / (price_proximity_pct * 100 + 1e-9)) if near_swing_low else 0.0
+
     # ---- 5) 判断是否存在“大墙” ----
     # has_large_ask_wall / has_large_bid_wall：
     # - 优先使用 deriv.has_large_*_wall（如果上游已经算好了）
@@ -250,6 +258,34 @@ def build_liquidity_hunt_signal(
     # 1) OI 缺失但允许 fallback
     # 2) 关键字段缺失但允许 missing fallback
     fallback_mode = (oi_missing and allow_oi_missing_fallback) or missing_fallback_mode
+
+    # 方向 bias / edge_confidence：由策略自身计算
+    wall_ask_score = 1.0 if has_large_ask_wall else 0.0
+    wall_bid_score = 1.0 if has_large_bid_wall else 0.0
+    oi_spike_score = _clamp((oi_change_pct or 0.0) / max(min_oi_spike_pct, 1e-6), 0.0, 1.0)
+    oi_flush_score = _clamp(-(oi_change_pct or 0.0) / max(min_oi_spike_pct, 1e-6), 0.0, 1.0)
+
+    short_score = _clamp(near_high_score * (0.6 * wall_ask_score + 0.4 * oi_spike_score))
+    long_score = _clamp(near_low_score * (0.6 * wall_bid_score + 0.4 * oi_flush_score))
+    edge_confidence = _clamp(max(long_score, short_score) * (0.8 if fallback_mode else 1.0))
+
+    debug_scores = {
+        "long": round(long_score, 4),
+        "short": round(short_score, 4),
+        "near_high": round(near_high_score, 4),
+        "near_low": round(near_low_score, 4),
+        "wall_ask": wall_ask_score,
+        "wall_bid": wall_bid_score,
+        "oi_spike": round(oi_spike_score, 4),
+        "oi_flush": round(oi_flush_score, 4),
+        "fallback_mode": 1.0 if fallback_mode else 0.0,
+    }
+
+    rejected_reasons = []
+    if missing_reason:
+        rejected_reasons.append(missing_reason)
+    if fallback_mode and not missing_reason:
+        rejected_reasons.append("lh_fallback_mode")
 
     # =========================
     # A) LH Short：靠近 swing high 的假突破 → 做空回归
@@ -305,6 +341,7 @@ def build_liquidity_hunt_signal(
             symbol=snap.symbol,
             direction="short",
             trade_confidence=confidence,
+            edge_confidence=edge_confidence,
             entry=price,
             tp1=tp1,
             tp2=tp2,
@@ -313,6 +350,8 @@ def build_liquidity_hunt_signal(
             add_position_pct=add_position_pct,
             reason=reason,
             snapshot=snap,
+            debug_scores=debug_scores,
+            rejected_reasons=rejected_reasons or None,
         )
 
     # =========================
@@ -367,6 +406,7 @@ def build_liquidity_hunt_signal(
             symbol=snap.symbol,
             direction="long",
             trade_confidence=confidence,
+            edge_confidence=edge_confidence,
             entry=price,
             tp1=tp1,
             tp2=tp2,
@@ -375,6 +415,8 @@ def build_liquidity_hunt_signal(
             add_position_pct=add_position_pct,
             reason=reason,
             snapshot=snap,
+            debug_scores=debug_scores,
+            rejected_reasons=rejected_reasons or None,
         )
 
     # ---- 任何一边不触发 → None ----

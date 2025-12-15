@@ -52,6 +52,10 @@ def _get_nested(settings, group: str, key: str, default):
     return default
 
 
+def _clamp(value: float, min_value: float = 0.0, max_value: float = 1.0) -> float:
+    return max(min_value, min(max_value, value))
+
+
 # =========================
 # 主函数：构建均值回归信号
 # =========================
@@ -145,6 +149,41 @@ def build_mean_reversion_signal(
     # fallback_mode：OI 缺失但允许 fallback
     fallback_mode = oi_missing and allow_oi_missing_fallback
 
+    # 方向 bias & edge confidence 由策略内部计算
+    rsi_span = max(rsi_overbought - rsi_oversold, 1e-6)
+    margin = 5
+
+    long_rsi_score = _clamp((rsi_oversold + margin - rsi6) / rsi_span, 0.0, 1.0)
+    short_rsi_score = _clamp((rsi6 - (rsi_overbought - margin)) / rsi_span, 0.0, 1.0)
+
+    long_dev_score = _clamp((ma25 - price) / (atr_dev_mult * atr + 1e-9), 0.0, 1.0)
+    short_dev_score = _clamp((price - ma25) / (atr_dev_mult * atr + 1e-9), 0.0, 1.0)
+
+    long_oi_score = _clamp(-(oi_change_pct or 0.0) / max(min_oi_change_pct, 1e-6), 0.0, 1.0)
+    short_oi_score = _clamp((oi_change_pct or 0.0) / max(min_oi_change_pct, 1e-6), 0.0, 1.0)
+
+    long_score = _clamp(0.5 * long_dev_score + 0.35 * long_rsi_score + 0.15 * long_oi_score)
+    short_score = _clamp(0.5 * short_dev_score + 0.35 * short_rsi_score + 0.15 * short_oi_score)
+
+    edge_confidence = _clamp(
+        max(long_score, short_score)
+        * (fallback_confidence_mult if fallback_mode else 1.0)
+    )
+
+    debug_scores = {
+        "long": round(long_score, 4),
+        "short": round(short_score, 4),
+        "long_rsi": round(long_rsi_score, 4),
+        "short_rsi": round(short_rsi_score, 4),
+        "long_dev": round(long_dev_score, 4),
+        "short_dev": round(short_dev_score, 4),
+        "long_oi": round(long_oi_score, 4),
+        "short_oi": round(short_oi_score, 4),
+        "fallback_mode": 1.0 if fallback_mode else 0.0,
+    }
+
+    rejected_reasons = ["oi_missing_fallback"] if fallback_mode else []
+
     # 触发逻辑：必须同时满足
     # 1) 远离均线（下方） + 2) 超卖 + 3) OI 出清 或者 OI 缺失 fallback
     if cond_far_below_ma and cond_oversold and (cond_oi_flushing_out or fallback_mode):
@@ -187,6 +226,7 @@ def build_mean_reversion_signal(
             symbol=snap.symbol,
             direction="long",
             trade_confidence=confidence,
+            edge_confidence=edge_confidence,
             entry=price,
             tp1=tp1,
             tp2=tp2,
@@ -195,6 +235,8 @@ def build_mean_reversion_signal(
             add_position_pct=add_pct,
             reason=reason,
             snapshot=snap,
+            debug_scores=debug_scores,
+            rejected_reasons=rejected_reasons or None,
         )
 
     # =========================
@@ -250,6 +292,7 @@ def build_mean_reversion_signal(
             symbol=snap.symbol,
             direction="short",
             trade_confidence=confidence,
+            edge_confidence=edge_confidence,
             entry=price,
             tp1=tp1,
             tp2=tp2,
@@ -258,6 +301,8 @@ def build_mean_reversion_signal(
             add_position_pct=add_pct,
             reason=reason,
             snapshot=snap,
+            debug_scores=debug_scores,
+            rejected_reasons=rejected_reasons or None,
         )
 
     # ---- 没有触发任何一边 → 返回 None ----
