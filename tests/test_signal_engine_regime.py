@@ -3,7 +3,7 @@ from datetime import datetime
 from bot.config import Settings
 from bot.models import TimeframeIndicators, DerivativeIndicators, MarketSnapshot
 from bot.regime_detector import RegimeSignal
-from bot.signal_engine import SignalEngine
+from bot.signal_engine import SignalEngine, TradeSignal
 
 
 def make_tf(
@@ -340,3 +340,66 @@ def test_trending_regime_overridden_when_weak_trend():
     overridden = engine._apply_regime_override(regime_signal)
 
     assert overridden.regime == "high_vol_ranging"
+
+
+def test_reason_prefix_uses_regime(monkeypatch):
+    tf = make_tf(
+        "4h",
+        close=100,
+        ma7=100,
+        ma25=100,
+        ma99=100,
+        rsi6=50,
+        rsi12=50,
+        rsi24=50,
+        macd=0.0,
+        macd_signal=0.0,
+        macd_hist=0.0,
+        atr=1.0,
+        volume=100,
+        ma25_history=[100] * 6,
+        rsi6_history=[50, 51, 49, 50],
+        trend_label="range",
+    )
+    deriv = make_deriv()
+
+    snap = MarketSnapshot(
+        symbol="TEST",
+        ts=datetime.utcnow(),
+        tf_4h=tf,
+        tf_1h=tf,
+        tf_15m=tf,
+        deriv=deriv,
+    )
+
+    engine = SignalEngine(Settings())
+
+    def fake_detect_regime(snap_arg, settings):
+        return RegimeSignal(
+            regime="high_vol_ranging",
+            reason="mock_regime_reason",
+            ma_angle=0.0,
+            atr_rel=0.02,
+            rsi_avg_dev=0.0,
+            osc_count=0,
+        )
+
+    def fake_decide(self, snap_arg, regime_signal):
+        return TradeSignal(
+            symbol=snap_arg.symbol,
+            direction="none",
+            reason="base reason",
+            trade_confidence=0.1,
+            edge_confidence=0.2,
+            setup_type="none",
+            snapshot=snap_arg,
+        )
+
+    monkeypatch.setattr("bot.signal_engine.detect_regime", fake_detect_regime)
+    monkeypatch.setattr(SignalEngine, "decide", fake_decide)
+    monkeypatch.setattr("bot.signal_engine.build_conditional_plan", lambda *_, **__: None)
+
+    signal = engine.generate_signal(snap)
+
+    assert signal.reason.startswith("[high_vol_ranging]")
+    assert "regime=" not in signal.reason

@@ -323,15 +323,12 @@ class SignalEngine:
 
         # --- reason 统一前缀 ---
         if signal and signal.reason:
-            if snap.regime in ("high_vol_ranging", "low_vol_ranging"):
-                prefix = "range"
-            elif snap.regime == "trending":
-                prefix = "trending"
-            else:
-                prefix = "unknown"
+            regime_label = snap.regime or "unknown"
+            regime_reason = snap.regime_reason or ""
 
-            signal.reason = (
-                f"[{prefix}] {signal.reason} | regime={snap.regime} | {snap.regime_reason}"
-            )
+            if regime_reason:
+                signal.reason = f"[{regime_label}] {signal.reason} | {regime_reason}"
+            else:
+                signal.reason = f"[{regime_label}] {signal.reason}"
 
         return signal
