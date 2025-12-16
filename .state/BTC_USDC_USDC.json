@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at_utc": "2025-12-16T12:01:14.146519+00:00",
+  "updated_at_utc": "2025-12-16T12:36:18.370396+00:00",
   "signals": {
     "BTC/USDC:USDC|abdd3cdd9ece": {
       "signal_id": "abdd3cdd9ece",
@@ -84,12 +84,12 @@
       "signal_id": "bf8cc3af4142",
       "symbol": "BTC/USDC:USDC",
       "created_at_utc": "2025-12-16T12:01:13.407106+00:00",
-      "last_seen_utc": "2025-12-16T12:01:13.407106+00:00",
+      "last_seen_utc": "2025-12-16T12:36:17.283071+00:00",
       "actions_sent": {
         "EXECUTE_NOW": {
-          "sent_at_utc": "2025-12-16T12:01:13.407106+00:00",
-          "expires_at_utc": "2025-12-16T12:31:13.407106+00:00",
-          "hash": "352071c0070448532a16b06c8b004ab2372e48b6"
+          "sent_at_utc": "2025-12-16T12:36:17.283071+00:00",
+          "expires_at_utc": "2025-12-16T13:06:17.283071+00:00",
+          "hash": "25741dfe99736ab376600cd792fb978752b9e555"
         }
       }
     }
