@@ -79,7 +79,6 @@ class Notifier:
         payload = {
             "chat_id": final_chat_id,
             "text": message,
-            "parse_mode": "Markdown",
             "disable_web_page_preview": True,
         }
 
