@@ -49,6 +49,7 @@ def _make_snapshot() -> MarketSnapshot:
         oi_change_24h=1.0,
         orderbook_asks=[],
         orderbook_bids=[],
+        mark_price=100.5,
     )
     return MarketSnapshot(
         symbol="TEST/USDC:USDC",
@@ -90,8 +91,11 @@ def test_build_signal_event_serializes():
     signal = _make_signal(snapshot)
     event = build_signal_event(snapshot, signal, Settings(), exchange_id="test")
 
-    assert event["schema_version"] == "2.1"
+    assert event["schema_version"] == "2.2"
     assert event["signal"]["thresholds_snapshot"]
+    assert event["market"]["price"] == snapshot.deriv.mark_price
+    assert event["derivatives"]["mark_price"] == snapshot.deriv.mark_price
+    assert event["market"]["snapshot_ts_utc"]
     # Ensure JSON serialization does not raise
     json.dumps(event)
 

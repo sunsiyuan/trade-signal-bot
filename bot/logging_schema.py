@@ -1,4 +1,10 @@
-"""Structured signal logging helpers (schema v2)."""
+"""Structured signal logging helpers (schema v2).
+
+Schema 2.2 aligns the serialized event with the actual runtime data
+available inside :class:`MarketSnapshot` / :class:`TradeSignal` objects so
+downstream consumers no longer see placeholder fields (e.g. missing mark
+price, orderbook aggregates, or snapshot timestamp).
+"""
 
 from __future__ import annotations
 
@@ -14,7 +20,7 @@ from .models import MarketSnapshot
 from .signal_engine import TradeSignal
 
 
-SCHEMA_VERSION = "2.1"
+SCHEMA_VERSION = "2.2"
 
 
 def _safe_iso(dt: Optional[datetime]) -> Optional[str]:
@@ -41,6 +47,9 @@ def _tf_to_timedelta(tf: str) -> timedelta:
 
 
 def _timeframe_block(tf) -> Dict[str, Any]:
+    price_last = getattr(tf, "price_last", None)
+    close_price = getattr(tf, "close", None)
+
     return {
         "tf": tf.timeframe,
         "last_candle_open_utc": _safe_iso(tf.last_candle_open_utc),
@@ -51,13 +60,16 @@ def _timeframe_block(tf) -> Dict[str, Any]:
         "missing_bars_count": tf.missing_bars_count,
         "gap_list": tf.gap_list,
         "prices": {
-            "price_last": tf.price_last,
-            "price_mid": tf.price_mid,
-            "typical_price": tf.typical_price,
-            "mark": None,
-            "index": None,
-            "return_last": tf.return_last,
+            "close": close_price,
+            "price_last": price_last if price_last is not None else close_price,
+            "price_mid": getattr(tf, "price_mid", None),
+            "typical_price": getattr(tf, "typical_price", None),
+            "mark": getattr(tf, "mark_price", None),
+            "index": getattr(tf, "index_price", None),
+            "return_last": getattr(tf, "return_last", None),
         },
+        "volume": getattr(tf, "volume", None),
+        "trend_label": getattr(tf, "trend_label", None),
         "volatility": {
             "atr": tf.atr,
             "atr_rel": tf.atr_rel,
@@ -181,7 +193,11 @@ def build_signal_event(
         "market": {
             "symbol": snapshot.symbol,
             "exchange": exchange_id,
-            "price": snapshot.tf_15m.close,
+            "price": getattr(snapshot.deriv, "mark_price", None)
+            or getattr(snapshot.tf_15m, "close", None),
+            "snapshot_ts_utc": _safe_iso(getattr(snapshot, "ts", None)),
+            "asks": getattr(snapshot, "asks", None),
+            "bids": getattr(snapshot, "bids", None),
             "settings_snapshot": _settings_snapshot(settings),
         },
         "alignment": {
@@ -192,10 +208,11 @@ def build_signal_event(
             "alignment_reason": alignment_reason or "ok",
         },
         "timeframes": [_timeframe_block(tf_map[tf]) for tf in tf_list if tf in tf_map],
-            "derivatives": {
-                "funding": snapshot.deriv.funding,
-                "open_interest": snapshot.deriv.open_interest,
-                "oi_change_24h": snapshot.deriv.oi_change_24h,
+        "derivatives": {
+            "funding": snapshot.deriv.funding,
+            "open_interest": snapshot.deriv.open_interest,
+            "oi_change_24h": snapshot.deriv.oi_change_24h,
+            "mark_price": getattr(snapshot.deriv, "mark_price", None),
             "orderbook": {
                 "asks": snapshot.deriv.orderbook_asks,
                 "bids": snapshot.deriv.orderbook_bids,
@@ -214,6 +231,8 @@ def build_signal_event(
             "reason": snapshot.regime_reason,
             "rsidev": snapshot.rsidev,
             "atrrel": snapshot.atrrel,
+            "rsi_15m": getattr(snapshot, "rsi_15m", None),
+            "rsi_1h": getattr(snapshot, "rsi_1h", None),
         },
         "signal": {
             "action": _action(),
