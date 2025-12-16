@@ -9,15 +9,16 @@ class DummySignal:
             setattr(self, key, value)
 
 
-def test_should_send_respects_ttl(tmp_path):
+def test_watch_signals_are_not_cached(tmp_path):
     base_dir = tmp_path / "state"
     now = datetime(2024, 1, 1, tzinfo=timezone.utc)
 
     state = state_store.load_state("ETH/USDC", base_dir=str(base_dir))
-    allowed, _ = state_store.should_send(
+    allowed, info = state_store.should_send(
         state, "sig-1", "ETH/USDC", "WATCH", now, action_hash="hash-1"
     )
     assert allowed
+    assert info["reason"] == "watch_no_cache"
 
     state_store.mark_sent(
         state,
@@ -36,18 +37,9 @@ def test_should_send_respects_ttl(tmp_path):
         now + timedelta(seconds=1),
         action_hash="hash-1",
     )
-    assert not allowed_second
-    assert info_second["reason"] == "action_not_expired"
-
-    allowed_after_ttl, _ = state_store.should_send(
-        state,
-        "sig-1",
-        "ETH/USDC",
-        "WATCH",
-        now + timedelta(seconds=state_store.ACTION_TTLS["WATCH"] + 5),
-        action_hash="hash-1",
-    )
-    assert allowed_after_ttl
+    assert allowed_second
+    assert info_second["reason"] == "watch_no_cache"
+    assert state.get("signals") == {}
 
 
 def test_upgrade_allows_next_action(tmp_path):
