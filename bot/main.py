@@ -686,28 +686,15 @@ def main():
 
         if mode == "WATCH":
             current_action = "WATCH"
-            symbol_state = _get_symbol_state(sig.symbol)
-            action_hash = compute_action_hash(current_action, base_plan)
             allowed, info = should_send(
-                symbol_state,
+                {},
                 signal_id,
                 sig.symbol,
                 current_action,
                 now,
-                action_hash=action_hash,
+                action_hash=None,
             )
             _log_dedupe(info)
-            if allowed:
-                mark_sent(
-                    symbol_state,
-                    signal_id,
-                    sig.symbol,
-                    current_action,
-                    now,
-                    valid_until=valid_until_dt,
-                    action_hash=action_hash,
-                )
-                dirty_symbols.add(sig.symbol)
         elif mode == "PLACE_LIMIT_4H":
             current_action = "LIMIT_4H"
             symbol_state = _get_symbol_state(sig.symbol)

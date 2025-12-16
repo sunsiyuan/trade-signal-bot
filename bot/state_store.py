@@ -164,6 +164,18 @@ def should_send(
     *,
     action_hash: Optional[str] = None,
 ) -> Tuple[bool, Dict[str, Any]]:
+    if action_type == "WATCH":
+        info = {
+            "dedupe_key": _signal_key(symbol, signal_id),
+            "symbol": symbol,
+            "signal_id": signal_id,
+            "action_type": action_type,
+            "existing": False,
+            "result": "SEND",
+            "reason": "watch_no_cache",
+        }
+        return True, info
+
     entry = _ensure_signal_entry(state, signal_id, symbol, now)
     dedupe_key = f"{symbol}|{signal_id}|{action_type}"
     record = entry.get("actions_sent", {}).get(action_type)
@@ -208,6 +220,9 @@ def mark_sent(
     valid_until: Optional[datetime] = None,
     action_hash: Optional[str] = None,
 ) -> Dict[str, Any]:
+    if action_type == "WATCH":
+        return {}
+
     entry = _ensure_signal_entry(state, signal_id, symbol, now)
     expires_at = _compute_expires_at(action_type, now, valid_until)
     record = {
