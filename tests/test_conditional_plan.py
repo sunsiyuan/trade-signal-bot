@@ -56,10 +56,15 @@ def _snapshot(price: float = 100.0, atr_4h: float = 10.0) -> MarketSnapshot:
     return snap
 
 
-def _intent(entry: float, atr: float = 10.0, allow_execute_now: bool = True) -> ExecutionIntent:
+def _intent(
+    entry: float,
+    atr: float = 10.0,
+    allow_execute_now: bool = True,
+    direction: str = "long",
+) -> ExecutionIntent:
     return ExecutionIntent(
         symbol="BTC/USDT",
-        direction="long",
+        direction=direction,
         entry_price=entry,
         entry_reason="test",
         invalidation_price=entry - 2,
@@ -73,7 +78,7 @@ def _intent(entry: float, atr: float = 10.0, allow_execute_now: bool = True) -> 
 
 def test_execute_now_when_price_close_to_entry():
     snap = _snapshot(price=100.0)
-    intent = _intent(entry=101.0, atr=10.0)
+    intent = _intent(entry=99.0, atr=10.0)
 
     plan = build_conditional_plan_from_intent(intent, snap)
 
@@ -95,6 +100,26 @@ def test_place_limit_when_within_one_atr():
     delta_hours = (valid_dt - datetime.now(timezone.utc)).total_seconds() / 3600
     assert 3.0 <= delta_hours <= 5.0
     assert "limit" in plan.explain
+
+
+def test_long_entry_above_current_does_not_place_limit():
+    snap = _snapshot(price=100.0)
+    intent = _intent(entry=105.0, atr=10.0, allow_execute_now=False)
+
+    plan = build_conditional_plan_from_intent(intent, snap)
+
+    assert plan.execution_mode == "WATCH_ONLY"
+    assert plan.entry_price is None
+
+
+def test_short_entry_below_current_does_not_place_limit():
+    snap = _snapshot(price=100.0)
+    intent = _intent(entry=95.0, atr=10.0, allow_execute_now=False, direction="short")
+
+    plan = build_conditional_plan_from_intent(intent, snap)
+
+    assert plan.execution_mode == "WATCH_ONLY"
+    assert plan.entry_price is None
 
 
 def test_watch_only_when_far():
