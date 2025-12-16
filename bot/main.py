@@ -318,10 +318,15 @@ def format_action_plan_message(
     valid_until = _format_valid_until(plan)
     reason_text = reason or plan.get("explain") or getattr(signal, "reason", "") or "-"
 
+    event_display = {
+        "CREATED": "设置限价单",
+        "TRADENOW": "立刻交易",
+    }.get(event, "设置限价单" if event.startswith("CREATED") else event)
+
     return "\n".join(
         [
             _beijing_time_header(),
-            f"【{event}】交易动作更新",
+            f"【{event_display}】交易动作更新",
             f"ID: {signal_id}",
             f"标的: {symbol} | 方向: {direction.upper()} | 模式: {execution_mode}",
             f"现价: {price} | 15m RSI6: {rsi_text}",

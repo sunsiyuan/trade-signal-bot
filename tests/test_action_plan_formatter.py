@@ -88,6 +88,7 @@ def test_format_action_plan_message_with_mark_and_multiple_tp():
 
     msg = format_action_plan_message(signal, snap, plan, signal_id="sig-1", event="CREATED")
 
+    assert "【设置限价单】交易动作更新" in msg
     assert "现价: 123.4567" in msg
     assert "TP: 130.0000/135.0000" in msg
     assert "SL: 95.0000" in msg
@@ -113,3 +114,20 @@ def test_format_action_plan_message_fallbacks_and_no_none_strings():
     assert "TP: 125.5000" in msg
     assert "SL: 94.5000" in msg  # from execution_intent invalidation
     assert "None" not in msg
+
+
+def test_format_action_plan_message_tradenow_event_label():
+    snap = _snapshot(mark_price=100.0, price_last=101.0)
+    signal = _signal(snap, tp1=110.0, tp2=None, sl=95.0)
+    plan = {
+        "execution_mode": "EXECUTE_NOW",
+        "direction": "long",
+        "entry_price": 101.0,
+        "valid_until_utc": None,
+        "cancel_if": {},
+        "explain": "immediate action",
+    }
+
+    msg = format_action_plan_message(signal, snap, plan, signal_id="sig-3", event="TRADENOW")
+
+    assert "【立刻交易】交易动作更新" in msg
