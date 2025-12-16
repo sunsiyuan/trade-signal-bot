@@ -121,8 +121,29 @@ def _extract_rsi_15m(snapshot) -> str:
 def _extract_mark_price(snapshot) -> Optional[float]:
     if snapshot is None:
         return None
+
     try:
-        return getattr(snapshot.deriv, "mark_price", None)
+        tf_15m = getattr(snapshot, "tf_15m", None)
+        if tf_15m:
+            prices = getattr(tf_15m, "prices", None)
+            if isinstance(prices, dict):
+                mark = prices.get("mark")
+                if mark is not None:
+                    return mark
+                price_last = prices.get("price_last")
+                if price_last is not None:
+                    return price_last
+
+            for attr in ("mark", "price_last", "close"):
+                value = getattr(tf_15m, attr, None)
+                if value is not None:
+                    return value
+
+        deriv = getattr(snapshot, "deriv", None)
+        if deriv and getattr(deriv, "mark_price", None) is not None:
+            return deriv.mark_price
+
+        return getattr(snapshot, "price", None)
     except Exception:
         return None
 
@@ -217,18 +238,96 @@ def format_summary_compact(symbol, snapshot, action: str) -> str:
     return f"{symbol} | 💰 {price} | {regime_icon}{regime_cn} | {_action_label(action)}"
 
 
-def _format_action_event_message(event: str, plan: Dict, reason: str, signal_id: str) -> str:
-    entry = _format_price(plan.get("entry_price"))
-    invalidation = _format_price(plan.get("invalidation_price"))
+def _extract_rsi6_value(snapshot) -> Optional[float]:
+    try:
+        tf_15m = getattr(snapshot, "tf_15m", None)
+        if tf_15m is None:
+            return None
+
+        indicators = getattr(tf_15m, "indicators", None)
+        if isinstance(indicators, dict):
+            value = indicators.get("rsi_6")
+            if value is not None:
+                return value
+
+        return getattr(tf_15m, "rsi6", None)
+    except Exception:
+        return None
+
+
+def _format_valid_until(plan: Dict) -> str:
+    valid_until = plan.get("valid_until_utc")
+    dt = _parse_dt(valid_until)
+    if dt:
+        return dt.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
+    return valid_until or "N/A"
+
+
+def _format_tp_values(signal, plan: Dict) -> str:
+    tps = []
+    tp_container = getattr(signal, "tp", None) if signal else None
+    for key in ("tp1", "tp2", "tp3"):
+        value = plan.get(key)
+        if value is None and signal:
+            if tp_container is not None:
+                value = getattr(tp_container, key, None) if not isinstance(tp_container, dict) else tp_container.get(key)
+            if value is None:
+                value = getattr(signal, key, None)
+        if value is not None:
+            tps.append(_format_price(value))
+
+    return "/".join(tps) if tps else "-"
+
+
+def _format_sl_value(signal, plan: Dict) -> str:
+    sl_candidates = [
+        plan.get("sl"),
+        getattr(signal, "sl", None) if signal else None,
+        getattr(getattr(signal, "execution_intent", None), "invalidation_price", None)
+        if signal
+        else None,
+        plan.get("invalidation_price"),
+    ]
+
+    for value in sl_candidates:
+        if value is not None:
+            return _format_price(value)
+    return "-"
+
+
+def format_action_plan_message(
+    signal,
+    snap,
+    plan: Dict,
+    signal_id: str,
+    event: str = "CREATED",
+    reason: str = "",
+) -> str:
+    plan = _plan_dict(plan) or {}
+    price = _format_price(_extract_mark_price(snap))
+    rsi6 = _extract_rsi6_value(snap)
+    rsi_text = f"{rsi6:.1f}" if rsi6 is not None else "NA"
+
+    symbol = plan.get("symbol") or getattr(signal, "symbol", "")
+    direction = (plan.get("direction") or getattr(signal, "direction", "")) or ""
+    execution_mode = plan.get("execution_mode") or getattr(plan, "execution_mode", "")
+    entry_price = plan.get("entry_price")
+    entry_text = _format_price(entry_price) if entry_price is not None else "-"
+    sl_text = _format_sl_value(signal, plan)
+    tp_text = _format_tp_values(signal, plan)
+    valid_until = _format_valid_until(plan)
+    reason_text = reason or plan.get("explain") or getattr(signal, "reason", "") or "-"
+
     return "\n".join(
         [
             _beijing_time_header(),
             f"【{event}】交易动作更新",
             f"ID: {signal_id}",
-            f"标的: {plan.get('symbol')} | 方向: {plan.get('direction', '').upper()} | 模式: {plan.get('execution_mode')}",
-            f"入场: {entry} | 失效: {invalidation}",
-            f"市场态势: {plan.get('regime', 'unknown')}",
-            f"原因: {reason}",
+            f"标的: {symbol} | 方向: {direction.upper()} | 模式: {execution_mode}",
+            f"现价: {price} | 15m RSI6: {rsi_text}",
+            f"入场: {entry_text} | SL: {sl_text} | TP: {tp_text}",
+            f"有效期: {valid_until}",
+            f"原因: {reason_text}",
         ]
     )
 
@@ -516,7 +615,9 @@ def main():
             if not _event_sent(state.get("sent_events", {}), signal_id, event):
                 plan_for_msg = {**plan, "symbol": symbol}
                 action_messages.append(
-                    _format_action_event_message(event, plan_for_msg, reason, signal_id or "")
+                    format_action_plan_message(
+                        None, snap, plan_for_msg, signal_id or "", event=event, reason=reason
+                    )
                 )
                 _mark_event_sent(state.setdefault("sent_events", {}), signal_id, event)
             state.get("active_plans", {}).pop(symbol, None)
@@ -542,6 +643,10 @@ def main():
             "direction": plan.get("direction") or sig.direction,
             "entry_price": entry_price,
             "invalidation_price": invalidation_price,
+            "tp1": getattr(sig, "tp1", None),
+            "tp2": getattr(sig, "tp2", None),
+            "tp3": getattr(sig, "tp3", None),
+            "sl": getattr(sig, "sl", None),
             "regime": getattr(snap, "regime", None) if snap else None,
             "valid_until_utc": plan.get("valid_until_utc"),
             "created_utc": now.isoformat(),
@@ -584,13 +689,10 @@ def main():
                 ):
                     reason = plan.get("explain") or sig.reason or "创建4H限价计划"
                     action_messages.append(
-                        _format_action_event_message(
-                            "CREATED",
-                            base_plan,
-                            reason,
-                            base_plan.get("signal_id") or "",
-                        )
+                    format_action_plan_message(
+                        sig, snap, base_plan, base_plan.get("signal_id") or "", event="CREATED", reason=reason
                     )
+                )
                     _mark_event_sent(state.setdefault("sent_events", {}), base_plan.get("signal_id"), "CREATED")
                 dedupe_store[dedupe_key] = base_plan
                 state.setdefault("active_plans", {})[sig.symbol] = base_plan
@@ -599,19 +701,23 @@ def main():
             reason = plan.get("explain") or sig.reason or "立即执行"
             if not _event_sent(state.get("sent_events", {}), base_plan.get("signal_id"), "EXECUTE_NOW"):
                 action_messages.append(
-                    _format_action_event_message(
-                        "EXECUTE_NOW",
+                    format_action_plan_message(
+                        sig,
+                        snap,
                         base_plan,
-                        reason,
                         base_plan.get("signal_id") or "",
+                        event="EXECUTE_NOW",
+                        reason=reason,
                     )
                 )
                 execute_now_messages.append(
-                    _format_action_event_message(
-                        "EXECUTE_NOW",
+                    format_action_plan_message(
+                        sig,
+                        snap,
                         base_plan,
-                        reason,
                         base_plan.get("signal_id") or "",
+                        event="EXECUTE_NOW",
+                        reason=reason,
                     )
                 )
                 _mark_event_sent(state.setdefault("sent_events", {}), base_plan.get("signal_id"), "EXECUTE_NOW")
