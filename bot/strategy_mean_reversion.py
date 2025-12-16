@@ -127,8 +127,8 @@ def build_mean_reversion_signal(
     rsi6 = tf.rsi6
 
     # OI 变化（百分比），来自衍生品信息 deriv
-    oi_change_pct = snap.deriv.oi_change_pct
-    oi_missing = oi_change_pct is None
+    oi_change_24h = snap.deriv.oi_change_24h
+    oi_missing = oi_change_24h is None
 
     # ---- 3) 处理 OI 缺失策略 ----
     # 如果缺 OI 且 require_oi=True 且 allow_fallback=False，则直接不触发（返回 None）
@@ -145,10 +145,10 @@ def build_mean_reversion_signal(
     # 条件 2：RSI6 极端超卖
     cond_oversold = rsi6 <= rsi_oversold
 
-    # 条件 3：OI 正在“出清”（OI_change_pct <= -min_oi_change_pct）
+    # 条件 3：OI 正在“出清”（OI_change_24h <= -min_oi_change_pct）
     # 解释：OI 显著下降可能代表多空平仓出清 → 震荡里更容易反弹回均线
     cond_oi_flushing_out = (
-        oi_change_pct is not None and oi_change_pct <= -min_oi_change_pct
+        oi_change_24h is not None and oi_change_24h <= -min_oi_change_pct
     )
 
     # fallback_mode：OI 缺失但允许 fallback
@@ -164,8 +164,8 @@ def build_mean_reversion_signal(
     long_dev_score = _clamp((ma25 - price) / (atr_dev_mult * atr + 1e-9), 0.0, 1.0)
     short_dev_score = _clamp((price - ma25) / (atr_dev_mult * atr + 1e-9), 0.0, 1.0)
 
-    long_oi_score = _clamp(-(oi_change_pct or 0.0) / max(min_oi_change_pct, 1e-6), 0.0, 1.0)
-    short_oi_score = _clamp((oi_change_pct or 0.0) / max(min_oi_change_pct, 1e-6), 0.0, 1.0)
+    long_oi_score = _clamp(-(oi_change_24h or 0.0) / max(min_oi_change_pct, 1e-6), 0.0, 1.0)
+    short_oi_score = _clamp((oi_change_24h or 0.0) / max(min_oi_change_pct, 1e-6), 0.0, 1.0)
 
     long_score = _clamp(0.5 * long_dev_score + 0.35 * long_rsi_score + 0.15 * long_oi_score)
     short_score = _clamp(0.5 * short_dev_score + 0.35 * short_rsi_score + 0.15 * short_oi_score)
@@ -220,7 +220,7 @@ def build_mean_reversion_signal(
         # reason：给输出解释用
         reason = (
             f"Mean reversion long: price {price:.4f} < MA25 {ma25:.4f} - {atr_dev_mult} ATR, "
-            f"RSI6={rsi6:.1f} oversold, OI_change={oi_change_pct if oi_change_pct is not None else float('nan'):.1f}% "
+            f"RSI6={rsi6:.1f} oversold, OI_change={oi_change_24h if oi_change_24h is not None else float('nan'):.1f}% "
             f"{'flushing out' if cond_oi_flushing_out else 'missing'}"
         )
         if fallback_mode:
@@ -257,10 +257,10 @@ def build_mean_reversion_signal(
     # 条件 2：RSI6 极端超买
     cond_overbought = rsi6 >= rsi_overbought
 
-    # 条件 3：OI 正在“挤压”（OI_change_pct >= min_oi_change_pct）
+    # 条件 3：OI 正在“挤压”（OI_change_24h >= min_oi_change_pct）
     # 解释：OI 显著上升可能代表加杠杆追涨/追跌 → 震荡里更容易被反向收割回均线
     cond_oi_squeezing = (
-        oi_change_pct is not None and oi_change_pct >= min_oi_change_pct
+        oi_change_24h is not None and oi_change_24h >= min_oi_change_pct
     )
 
     # 触发逻辑：同 long 对称
@@ -290,7 +290,7 @@ def build_mean_reversion_signal(
 
         reason = (
             f"Mean reversion short: price {price:.4f} > MA25 {ma25:.4f} + {atr_dev_mult} ATR, "
-            f"RSI6={rsi6:.1f} overbought, OI_change={oi_change_pct if oi_change_pct is not None else float('nan'):.1f}% "
+            f"RSI6={rsi6:.1f} overbought, OI_change={oi_change_24h if oi_change_24h is not None else float('nan'):.1f}% "
             f"{'squeezing' if cond_oi_squeezing else 'missing'}"
         )
         if fallback_mode:

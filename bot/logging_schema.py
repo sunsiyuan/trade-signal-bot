@@ -192,11 +192,10 @@ def build_signal_event(
             "alignment_reason": alignment_reason or "ok",
         },
         "timeframes": [_timeframe_block(tf_map[tf]) for tf in tf_list if tf in tf_map],
-        "derivatives": {
-            "funding": snapshot.deriv.funding,
-            "open_interest": snapshot.deriv.open_interest,
-            "oi_change_24h": snapshot.deriv.oi_change_24h,
-            "oi_change_pct": snapshot.deriv.oi_change_pct,
+            "derivatives": {
+                "funding": snapshot.deriv.funding,
+                "open_interest": snapshot.deriv.open_interest,
+                "oi_change_24h": snapshot.deriv.oi_change_24h,
             "orderbook": {
                 "asks": snapshot.deriv.orderbook_asks,
                 "bids": snapshot.deriv.orderbook_bids,

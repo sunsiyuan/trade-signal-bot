@@ -240,8 +240,8 @@ def build_liquidity_hunt_signal(
     )
 
     # ---- 6) OI 变化（可能缺失） ----
-    oi_change_pct = snap.deriv.oi_change_pct
-    oi_missing = oi_change_pct is None
+    oi_change_24h = snap.deriv.oi_change_24h
+    oi_missing = oi_change_24h is None
 
     # 如果 OI 缺失且 require_oi=True 且不允许 fallback，则整个策略直接不触发
     if oi_missing and require_oi and not allow_oi_missing_fallback:
@@ -250,8 +250,8 @@ def build_liquidity_hunt_signal(
     # spike/flush：
     # - spike：OI 大幅上升（追突破加杠杆）
     # - flush：OI 大幅下降（平仓/爆仓出清）
-    oi_spike = oi_change_pct is not None and oi_change_pct >= min_oi_spike_pct
-    oi_flush = oi_change_pct is not None and oi_change_pct <= -min_oi_spike_pct
+    oi_spike = oi_change_24h is not None and oi_change_24h >= min_oi_spike_pct
+    oi_flush = oi_change_24h is not None and oi_change_24h <= -min_oi_spike_pct
 
     # post-spike 小实体蜡烛：用于确认“假突破后的无力延续”
     small_candles_after_spike = (
@@ -267,8 +267,8 @@ def build_liquidity_hunt_signal(
     # 方向 bias / edge_confidence：由策略自身计算
     wall_ask_score = 1.0 if has_large_ask_wall else 0.0
     wall_bid_score = 1.0 if has_large_bid_wall else 0.0
-    oi_spike_score = _clamp((oi_change_pct or 0.0) / max(min_oi_spike_pct, 1e-6), 0.0, 1.0)
-    oi_flush_score = _clamp(-(oi_change_pct or 0.0) / max(min_oi_spike_pct, 1e-6), 0.0, 1.0)
+    oi_spike_score = _clamp((oi_change_24h or 0.0) / max(min_oi_spike_pct, 1e-6), 0.0, 1.0)
+    oi_flush_score = _clamp(-(oi_change_24h or 0.0) / max(min_oi_spike_pct, 1e-6), 0.0, 1.0)
 
     short_score = _clamp(near_high_score * (0.6 * wall_ask_score + 0.4 * oi_spike_score))
     long_score = _clamp(near_low_score * (0.6 * wall_bid_score + 0.4 * oi_flush_score))
@@ -333,7 +333,7 @@ def build_liquidity_hunt_signal(
         # reason：解释字符串（用于 Telegram / debug）
         reason = (
             f"Liquidity hunt short near swing high {swing_high:.4f}: price={price:.4f}, "
-            f"large ask wall, OI {oi_change_pct if oi_change_pct is not None else float('nan'):.1f}% "
+            f"large ask wall, OI {oi_change_24h if oi_change_24h is not None else float('nan'):.1f}% "
             f"{'spike' if oi_spike else 'missing'}"
         )
         reason += f", post-spike small candles={tf.post_spike_small_body_count}"
@@ -401,7 +401,7 @@ def build_liquidity_hunt_signal(
 
         reason = (
             f"Liquidity hunt long near swing low {swing_low:.4f}: price={price:.4f}, "
-            f"large bid wall, OI {oi_change_pct if oi_change_pct is not None else float('nan'):.1f}% "
+            f"large bid wall, OI {oi_change_24h if oi_change_24h is not None else float('nan'):.1f}% "
             f"{'flush' if oi_flush else 'missing'}"
         )
         reason += f", post-spike small candles={tf.post_spike_small_body_count}"

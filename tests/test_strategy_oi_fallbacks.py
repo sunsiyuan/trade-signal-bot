@@ -58,7 +58,7 @@ def make_snapshot(tf_1h: TimeframeIndicators, deriv: DerivativeIndicators):
 
 
 def make_deriv(
-    oi_change_pct=None,
+    oi_change_24h=None,
     has_large_ask_wall=False,
     has_large_bid_wall=False,
     ask_wall_size=0.0,
@@ -67,8 +67,7 @@ def make_deriv(
     return DerivativeIndicators(
         funding=0.0,
         open_interest=0.0,
-        oi_change_24h=0.0,
-        oi_change_pct=oi_change_pct,
+        oi_change_24h=oi_change_24h,
         orderbook_asks=[],
         orderbook_bids=[],
         ask_wall_size=ask_wall_size,
@@ -80,7 +79,7 @@ def make_deriv(
 
 def test_mean_reversion_allows_fallback_when_oi_missing():
     tf = make_timeframe("1h", close=90, ma25=100, rsi6=10, atr=5)
-    snap = make_snapshot(tf, make_deriv(oi_change_pct=None))
+    snap = make_snapshot(tf, make_deriv(oi_change_24h=None))
 
     signal = build_mean_reversion_signal(
         snap,
@@ -96,7 +95,7 @@ def test_mean_reversion_allows_fallback_when_oi_missing():
 
 def test_mean_reversion_fallback_uses_separate_core_and_add_mult():
     tf = make_timeframe("1h", close=90, ma25=100, rsi6=10, atr=5)
-    snap = make_snapshot(tf, make_deriv(oi_change_pct=None))
+    snap = make_snapshot(tf, make_deriv(oi_change_24h=None))
 
     signal = build_mean_reversion_signal(
         snap,
@@ -120,7 +119,7 @@ def test_mean_reversion_fallback_uses_separate_core_and_add_mult():
 
 def test_mean_reversion_requires_oi_when_fallback_disabled():
     tf = make_timeframe("1h", close=90, ma25=100, rsi6=10, atr=5)
-    snap = make_snapshot(tf, make_deriv(oi_change_pct=None))
+    snap = make_snapshot(tf, make_deriv(oi_change_24h=None))
 
     signal = build_mean_reversion_signal(
         snap,
@@ -133,7 +132,7 @@ def test_mean_reversion_requires_oi_when_fallback_disabled():
 
 def test_mean_reversion_triggers_with_oi_present():
     tf = make_timeframe("1h", close=90, ma25=100, rsi6=10, atr=5)
-    snap = make_snapshot(tf, make_deriv(oi_change_pct=-5.0))
+    snap = make_snapshot(tf, make_deriv(oi_change_24h=-5.0))
 
     signal = build_mean_reversion_signal(
         snap,
@@ -160,7 +159,7 @@ def test_liquidity_hunt_uses_fallback_when_oi_missing():
         low_last_n=99.8,
     )
     deriv = make_deriv(
-        oi_change_pct=None,
+        oi_change_24h=None,
         has_large_ask_wall=True,
         ask_wall_size=10.0,
         bid_wall_size=1.0,
@@ -192,7 +191,7 @@ def test_liquidity_hunt_requires_oi_when_fallback_disabled():
         high_last_n=100.2,
         low_last_n=99.8,
     )
-    snap = make_snapshot(tf, make_deriv(oi_change_pct=None, has_large_ask_wall=True))
+    snap = make_snapshot(tf, make_deriv(oi_change_24h=None, has_large_ask_wall=True))
 
     signal = build_liquidity_hunt_signal(
         snap,
@@ -216,7 +215,7 @@ def test_liquidity_hunt_triggers_with_oi_spike():
         high_last_n=100.2,
         low_last_n=99.8,
     )
-    deriv = make_deriv(oi_change_pct=6.0, has_large_ask_wall=True)
+    deriv = make_deriv(oi_change_24h=6.0, has_large_ask_wall=True)
     snap = make_snapshot(tf, deriv)
 
     signal = build_liquidity_hunt_signal(

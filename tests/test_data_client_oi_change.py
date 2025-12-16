@@ -15,8 +15,20 @@ class DummyExchange:
     def market(self, symbol):
         return {"symbol": symbol, "id": symbol}
 
+    def fetch_ticker(self, symbol):
+        return {"info": {"openInterest": "200", "markPrice": "10"}}
+
+    def fetch_funding_rates(self, *args, **kwargs):
+        return []
+
     def fetch_open_interest_history(self, *args, **kwargs):
         return []
+
+    def fetch_order_book(self, *args, **kwargs):
+        return {"asks": [[10.0, 1.0]], "bids": [[9.5, 1.5]]}
+
+    def price_to_precision(self, symbol, price):
+        return price
 
 
 def _freeze_datetime(monkeypatch, fixed_now: datetime):
@@ -86,3 +98,15 @@ def test_compute_oi_change_skips_when_no_snapshot_24h_old(tmp_path, monkeypatch)
     change = client._compute_oi_change_24h(current_oi=200.0)
 
     assert change is None or math.isnan(change)
+
+
+def test_fetch_derivative_indicators_sets_oi_change_24h(monkeypatch):
+    symbol = "HYPE/USDC:USDC"
+    client = HyperliquidDataClient(Settings(symbol=symbol), exchange=DummyExchange())
+
+    monkeypatch.setattr(client, "_compute_oi_change_24h", lambda current_oi: 12.5)
+
+    deriv = client.fetch_derivative_indicators()
+
+    assert deriv.open_interest == 200.0
+    assert deriv.oi_change_24h == 12.5
