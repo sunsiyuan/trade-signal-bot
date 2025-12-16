@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "updated_at_utc": "2025-12-16T07:26:14.598788+00:00",
+  "signals": {
+    "AAVE/USDC:USDC|f0d1b3cc2d69": {
+      "signal_id": "f0d1b3cc2d69",
+      "symbol": "AAVE/USDC:USDC",
+      "created_at_utc": "2025-12-16T07:26:13.914483+00:00",
+      "last_seen_utc": "2025-12-16T07:26:13.914483+00:00",
+      "actions_sent": {
+        "WATCH": {
+          "sent_at_utc": "2025-12-16T07:26:13.914483+00:00",
+          "expires_at_utc": "2025-12-16T08:26:13.914483+00:00",
+          "hash": "db1991a01037327c4d5a30c2db4e978c87aa60f3"
+        }
+      }
+    }
+  }
+}
