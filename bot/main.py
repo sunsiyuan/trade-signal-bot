@@ -3,7 +3,7 @@ import json
 import os
 from dataclasses import asdict, is_dataclass, replace
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import ccxt
 
@@ -12,7 +12,17 @@ from .data_client import HyperliquidDataClient
 from .logging_schema import build_signal_event, write_jsonl_event
 from .notify import Notifier
 from .signal_engine import SignalEngine
-from .state_store import load_state, save_state
+from .state_store import (
+    ACTION_TTLS,
+    compute_action_hash,
+    compute_signal_id,
+    load_global_state,
+    load_state,
+    mark_sent,
+    save_global_state,
+    save_state,
+    should_send,
+)
 
 
 def _beijing_now() -> datetime:
@@ -225,6 +235,11 @@ def _mark_event_sent(sent_events: Dict[str, List[str]], signal_id: Optional[str]
     sent_events.setdefault(signal_id, [])
     if event not in sent_events[signal_id]:
         sent_events[signal_id].append(event)
+
+
+def _log_dedupe(info: Dict[str, Any]) -> None:
+    enriched = {**info, "deduped": info.get("result") == "DEDUPED"}
+    print(json.dumps(enriched, ensure_ascii=False))
 
 
 def format_summary_compact(symbol, snapshot, action: str) -> str:
@@ -554,8 +569,14 @@ def main():
     tracked = base_settings.tracked_symbols or [base_settings.symbol]
 
     state_path = os.path.join(".state", "state.json")
-    state = load_state(state_path)
-    dedupe_store = state.setdefault("dedupe_store", {})
+    state = load_global_state(state_path)
+    symbol_states: Dict[str, Dict[str, Any]] = {}
+    dirty_symbols: set[str] = set()
+
+    def _get_symbol_state(sym: str) -> Dict[str, Any]:
+        if sym not in symbol_states:
+            symbol_states[sym] = load_state(sym)
+        return symbol_states[sym]
 
     exchange = ccxt.hyperliquid({"enableRateLimit": True})
     exchange.load_markets()
@@ -581,6 +602,7 @@ def main():
         )
         snapshot = client.build_market_snapshot()
         signal = engine.generate_signal(snapshot)
+        signal.signal_id = compute_signal_id(signal)
         emit_multi_tf_log(snapshot, signal, symbol_settings, exchange_id=exchange.id)
         signals.append(signal)
         snapshots[symbol] = snapshot
@@ -641,8 +663,10 @@ def main():
         elif hasattr(sig, "sl"):
             invalidation_price = getattr(sig, "sl", None)
 
+        signal_id = getattr(sig, "signal_id", None) or compute_signal_id(sig)
+
         base_plan = {
-            "signal_id": getattr(sig, "signal_id", None),
+            "signal_id": signal_id,
             "symbol": sig.symbol,
             "execution_mode": mode,
             "direction": plan.get("direction") or sig.direction,
@@ -658,59 +682,92 @@ def main():
             "status": "ACTIVE",
         }
 
+        valid_until_dt = _parse_dt(base_plan.get("valid_until_utc"))
+
         if mode == "WATCH":
             current_action = "WATCH"
+            symbol_state = _get_symbol_state(sig.symbol)
+            action_hash = compute_action_hash(current_action, base_plan)
+            allowed, info = should_send(
+                symbol_state,
+                signal_id,
+                sig.symbol,
+                current_action,
+                now,
+                action_hash=action_hash,
+            )
+            _log_dedupe(info)
+            if allowed:
+                mark_sent(
+                    symbol_state,
+                    signal_id,
+                    sig.symbol,
+                    current_action,
+                    now,
+                    valid_until=valid_until_dt,
+                    action_hash=action_hash,
+                )
+                dirty_symbols.add(sig.symbol)
         elif mode == "PLACE_LIMIT_4H":
             current_action = "LIMIT_4H"
-            existing = state.get("active_plans", {}).get(sig.symbol)
-            dedupe_key = base_plan.get("signal_id") or f"{sig.symbol}:{mode}"
-            dedupe_payload = dedupe_store.get(dedupe_key)
-
-            print(
-                json.dumps(
-                    {
-                        "event": "CREATED_dedupe_check",
-                        "signal_id": base_plan.get("signal_id"),
-                        "dedupe_key": dedupe_key,
-                        "symbol": sig.symbol,
-                        "direction": base_plan.get("direction"),
-                        "execution_mode": mode,
-                        "valid_until_utc": base_plan.get("valid_until_utc"),
-                        "state_store_hit": dedupe_payload is not None,
-                        "state_store_payload": dedupe_payload,
-                    },
-                    ensure_ascii=False,
-                )
+            symbol_state = _get_symbol_state(sig.symbol)
+            reason = plan.get("explain") or sig.reason or "创建4H限价计划"
+            action_payload = {**base_plan, "reason": reason}
+            action_hash = compute_action_hash(current_action, action_payload)
+            allowed, info = should_send(
+                symbol_state,
+                signal_id,
+                sig.symbol,
+                current_action,
+                now,
+                action_hash=action_hash,
             )
-            if not existing or existing.get("signal_id") != base_plan.get("signal_id"):
-                if dedupe_payload:
-                    _mark_event_sent(
-                        state.setdefault("sent_events", {}),
-                        base_plan.get("signal_id"),
-                        "CREATED",
-                    )
-                elif not _event_sent(
-                    state.get("sent_events", {}), base_plan.get("signal_id"), "CREATED"
-                ):
-                    reason = plan.get("explain") or sig.reason or "创建4H限价计划"
-                    action_messages.append(
-                    format_action_plan_message(
-                        sig, snap, base_plan, base_plan.get("signal_id") or "", event="CREATED", reason=reason
-                    )
-                )
-                    _mark_event_sent(state.setdefault("sent_events", {}), base_plan.get("signal_id"), "CREATED")
-                dedupe_store[dedupe_key] = base_plan
-                state.setdefault("active_plans", {})[sig.symbol] = base_plan
-        elif mode == "EXECUTE_NOW":
-            current_action = "EXECUTE_NOW"
-            reason = plan.get("explain") or sig.reason or "立即执行"
-            if not _event_sent(state.get("sent_events", {}), base_plan.get("signal_id"), "EXECUTE_NOW"):
+            _log_dedupe(info)
+            if allowed:
                 action_messages.append(
                     format_action_plan_message(
                         sig,
                         snap,
                         base_plan,
-                        base_plan.get("signal_id") or "",
+                        signal_id or "",
+                        event="CREATED",
+                        reason=reason,
+                    )
+                )
+                _mark_event_sent(state.setdefault("sent_events", {}), signal_id, "CREATED")
+                mark_sent(
+                    symbol_state,
+                    signal_id,
+                    sig.symbol,
+                    current_action,
+                    now,
+                    valid_until=valid_until_dt,
+                    action_hash=action_hash,
+                )
+                dirty_symbols.add(sig.symbol)
+            state.setdefault("active_plans", {})[sig.symbol] = base_plan
+        elif mode == "EXECUTE_NOW":
+            current_action = "EXECUTE_NOW"
+            reason = plan.get("explain") or sig.reason or "立即执行"
+            symbol_state = _get_symbol_state(sig.symbol)
+            action_payload = {**base_plan, "reason": reason}
+            action_hash = compute_action_hash(current_action, action_payload)
+            allowed, info = should_send(
+                symbol_state,
+                signal_id,
+                sig.symbol,
+                current_action,
+                now,
+                action_hash=action_hash,
+            )
+            _log_dedupe(info)
+            if allowed:
+                action_messages.append(
+                    format_action_plan_message(
+                        sig,
+                        snap,
+                        base_plan,
+                        signal_id or "",
                         event="EXECUTE_NOW",
                         reason=reason,
                     )
@@ -720,12 +777,22 @@ def main():
                         sig,
                         snap,
                         base_plan,
-                        base_plan.get("signal_id") or "",
+                        signal_id or "",
                         event="EXECUTE_NOW",
                         reason=reason,
                     )
                 )
-                _mark_event_sent(state.setdefault("sent_events", {}), base_plan.get("signal_id"), "EXECUTE_NOW")
+                _mark_event_sent(state.setdefault("sent_events", {}), signal_id, "EXECUTE_NOW")
+                mark_sent(
+                    symbol_state,
+                    signal_id,
+                    sig.symbol,
+                    current_action,
+                    now,
+                    valid_until=None,
+                    action_hash=action_hash,
+                )
+                dirty_symbols.add(sig.symbol)
 
         summary_lines.append(format_summary_compact(sig.symbol, snap, current_action))
 
@@ -758,7 +825,10 @@ def main():
             )
         )
 
-    save_state(state_path, state)
+    for symbol in dirty_symbols:
+        save_state(symbol, symbol_states[symbol])
+
+    save_global_state(state_path, state)
 
     if results:
         print("Notification results:", results)

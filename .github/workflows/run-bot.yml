@@ -4,7 +4,7 @@ on:
   workflow_dispatch: {}
 
 concurrency:
-  group: trade-signal-${{ github.ref }}
+  group: signal-state-writer
   cancel-in-progress: false
 
 jobs:
@@ -30,12 +30,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Restore state cache
-        uses: actions/cache@v4
-        with:
-          path: .state
-          key: signal-state
-
       - name: Ensure state dir exists
         run: mkdir -p .state
 
@@ -58,6 +52,21 @@ jobs:
       - name: Collect hourly OI snapshot
         run: |
           python -m bot.oi_history
+
+      - name: Commit signal state updates
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          if git status --porcelain .state | grep -q .; then
+            git add .state/*.json || true
+            if git diff --cached --quiet; then
+              echo "No state changes to commit."
+            else
+              git commit -m "chore(state): update signal dedupe state"
+            fi
+          else
+            echo "No state changes to commit."
+          fi
 
       - name: Push hourly snapshot updates
         run: |
