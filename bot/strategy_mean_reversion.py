@@ -97,7 +97,7 @@ def build_mean_reversion_signal(
     add_pct = _get_nested(settings, "mean_reversion", "add_position_pct", 0.25)
 
     # SL buffer：ATR 的倍数（默认 0.8 ATR）
-    sl_buffer_mult = _get_nested(settings, "mean_reversion", "sl_buffer_mult", 0.8)
+    sl_buffer_mult = _get_nested(settings, "mean_reversion", "sl_buffer_mult", 0.4)
 
     # 是否强制要求 OI（默认 True）
     require_oi = _get_nested(settings, "mean_reversion", "require_oi", True)
@@ -195,9 +195,10 @@ def build_mean_reversion_signal(
         from .signal_engine import TradeSignal
 
         # ---- 构建下单计划（做多） ----
-
-        # 止损：放在 price 下方 sl_buffer_mult*ATR（注意：这非常紧/非常激进，取决于 sl_buffer_mult）
-        sl = price - sl_buffer_mult * atr
+        # 结构单设计
+        # 止损：1 atr是结构破坏，sl_buffer_mult是噪音缓冲
+        entry = ma25 - atr_dev_mult * atr
+        sl = entry - 1 * atr - sl_buffer_mult * atr
 
         # 止盈：先看回归 MA25，再看略高于 MA25 半个 ATR
         # 这是典型“回归均线”的 TP 设计
@@ -205,11 +206,13 @@ def build_mean_reversion_signal(
         tp2 = ma25 + 0.5 * atr
 
         # rr（风险回报比）估算：到 tp1 的收益 / 到 sl 的风险
-        rr = abs(tp1 - price) / max(abs(price - sl), 1e-6)
+        risk = abs(entry - sl)
+        reward = abs(tp1 - entry)
+        rr = reward / max(risk, 1e-9)
 
-        # confidence：基础 0.6，然后按 rr 增加一些，封顶 0.9
+        # trade_confidence：基础 0.6，然后按 rr 增加一些，封顶 0.9
         # 注意：rr 越大（离均线越远 or sl 越近）→ confidence 越高
-        confidence = min(0.9, 0.6 + 0.1 * rr)
+        trade_confidence = min(0.9, 0.6 + 0.1 * rr)
 
         # 如果是 fallback（OI 缺失），则降低 confidence 并缩仓位
         if fallback_mode:
@@ -230,9 +233,9 @@ def build_mean_reversion_signal(
         signal = TradeSignal(
             symbol=snap.symbol,
             direction="long",
-            trade_confidence=confidence,
+            trade_confidence=trade_confidence,
             edge_confidence=edge_confidence,
-            entry=price,
+            entry=entry,
             tp1=tp1,
             tp2=tp2,
             sl=sl,
@@ -268,19 +271,22 @@ def build_mean_reversion_signal(
         from .signal_engine import TradeSignal
 
         # ---- 构建下单计划（做空） ----
-
-        # 止损：放在 price 上方 sl_buffer_mult*ATR
-        sl = price + sl_buffer_mult * atr
+        # 结构单设计
+        # 止损：1 atr是结构破坏，sl_buffer_mult是噪音缓冲
+        entry = ma25 + atr_dev_mult * atr
+        sl = entry + 1 * atr + sl_buffer_mult * atr
 
         # 止盈：先回归 MA25，再略低于 MA25 半个 ATR
         tp1 = ma25
         tp2 = ma25 - 0.5 * atr
 
         # rr 估算（到 tp1 的收益 / 到 sl 的风险）
-        rr = abs(tp1 - price) / max(abs(sl - price), 1e-6)
+        risk = abs(entry - sl)
+        reward = abs(tp1 - entry)
+        rr = reward / max(risk, 1e-9)
 
         # confidence 同 long：基础 0.6 + 0.1*rr，封顶 0.9
-        confidence = min(0.9, 0.6 + 0.1 * rr)
+        trade_confidence = min(0.9, 0.6 + 0.1 * rr)
 
         # OI 缺失 fallback 降权与缩仓
         if fallback_mode:
@@ -299,9 +305,9 @@ def build_mean_reversion_signal(
         signal = TradeSignal(
             symbol=snap.symbol,
             direction="short",
-            trade_confidence=confidence,
+            trade_confidence=trade_confidence,
             edge_confidence=edge_confidence,
-            entry=price,
+            entry=entry,
             tp1=tp1,
             tp2=tp2,
             sl=sl,
