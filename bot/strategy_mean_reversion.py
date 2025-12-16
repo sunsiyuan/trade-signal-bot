@@ -84,7 +84,7 @@ def build_mean_reversion_signal(
     rsi_overbought = _get_nested(settings, "mean_reversion", "rsi_overbought", 88)
 
     # 价格偏离 MA25 的 ATR 倍数阈值：越大越“等极端再出手”（默认 1.2 ATR）
-    atr_dev_mult = _get_nested(settings, "mean_reversion", "atr_dev_mult", 1.2)
+    atr_dev_mult = _get_nested(settings, "mean_reversion", "atr_dev_mult", 1.6)
 
     # OI 变化阈值：认为“flush / squeeze” 的最小变化百分比（默认 3%）
     min_oi_change_pct = _get_nested(settings, "mean_reversion", "min_oi_change_pct", 3.0)
