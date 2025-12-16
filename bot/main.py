@@ -131,12 +131,6 @@ def _display_symbol(symbol: Optional[str]) -> str:
     return symbol.split(":")[0]
 
 
-def _format_oi(value: float) -> str:
-    if value is None:
-        return "NA"
-    return f"{value:,.0f}"
-
-
 def _format_macd_hist(value: float) -> str:
     if value is None:
         return "NA"
@@ -435,58 +429,6 @@ def is_actionable(signal, snapshot, settings: Settings):
     return False, "NONE", "NONE"
 
 
-def format_action_line(symbol, snapshot, signal, action_level: str, bias: str) -> str:
-    display_symbol = _display_symbol(symbol)
-    mark_price = _extract_mark_price(snapshot)
-    fallback_price = getattr(snapshot.tf_15m, "close", None) if snapshot else None
-    price = _format_price(
-        mark_price if mark_price is not None else fallback_price, symbol=symbol
-    )
-    regime_icon, regime_cn = _regime_display(
-        getattr(snapshot, "regime", ""),
-        getattr(snapshot.tf_4h, "trend_label", "") if snapshot else "",
-    )
-    action_icon = "✅" if action_level == "EXECUTE" else "👀"
-    action_cn = "可执行（考虑下单）" if action_level == "EXECUTE" else "关注（准备介入）"
-
-    bias_icon = ""
-    bias_cn = ""
-    if bias == "LONG":
-        bias_icon = "📈"
-        bias_cn = " 偏多"
-    elif bias == "SHORT":
-        bias_icon = "📉"
-        bias_cn = " 偏空"
-
-    strat = _setup_code(getattr(signal, "setup_type", "none"))
-    trade_conf = _format_pct(signal.trade_confidence or 0.0)
-    edge_type = getattr(signal, "edge_type", None)
-    edge_conf = _format_pct(signal.edge_confidence or 0.0)
-    edge_conf_display = edge_conf + (f"（{edge_type}）" if edge_type else "")
-    rsi_15m = _extract_rsi_15m(snapshot) if snapshot else "NA"
-    macd_hist_4h = _format_macd_hist(
-        getattr(snapshot.tf_4h, "macd_hist", None) if snapshot else None
-    )
-    levels = _format_levels(signal)
-    risk = (
-        f"Core {signal.core_position_pct * 100:.1f}% + "
-        f"Add {signal.add_position_pct * 100:.1f}%"
-    )
-
-    gate_tag = _extract_gate(signal)
-    top_reason = _top_reasons(signal, action_level)
-    why = f"Setup={signal.setup_type or 'none'}; Gate={gate_tag}; Top={top_reason}"
-
-    bias_block = f" {bias_icon}{bias_cn}" if bias_icon else ""
-    return (
-        f"{display_symbol} | 💰 {price} | {regime_icon}{regime_cn} | "
-        f"{action_icon} {action_cn}{bias_block} | "
-        f"Strat {strat} | Trade {trade_conf} / Edge {edge_conf_display} | "
-        f"15m RSI6 {rsi_15m} | 4H MACD hist {macd_hist_4h} | Levels {levels} | "
-        f"Risk {risk} | Why {why}"
-    )
-
-
 def format_summary_line(symbol, snapshot, signal) -> str:
     display_symbol = _display_symbol(symbol)
     mark_price = _extract_mark_price(snapshot)
@@ -517,63 +459,6 @@ def format_summary_line(symbol, snapshot, signal) -> str:
     )
 
 
-def format_signal_detail(signal):
-    snap = signal.snapshot
-    display_symbol = _display_symbol(signal.symbol)
-    if not snap:
-        return f"{display_symbol}: snapshot unavailable"
-
-    trade_conf = signal.trade_confidence or 0.0
-    edge_conf = signal.edge_confidence if hasattr(signal, "edge_confidence") else 0.0
-    edge_type = getattr(signal, "edge_type", None)
-    regime_icon, regime_cn = _regime_display(
-        snap.regime,
-        snap.tf_4h.trend_label,
-    )
-    beijing_ts = snap.ts.astimezone(timezone(timedelta(hours=8)))
-
-    debug_scores = signal.debug_scores or {}
-    long_score = debug_scores.get("long", "NA")
-    short_score = debug_scores.get("short", "NA")
-    gate_tag = _extract_gate(signal)
-    rejection_text = ", ".join(signal.rejected_reasons or []) or "-"
-
-    lines = [
-        f"📌 {display_symbol} — Trade Signal",
-        f"⏱ {beijing_ts.strftime('%Y-%m-%d %H:%M')} (UTC+8)",
-        f"{regime_icon}{regime_cn} | Regime reason: {snap.regime_reason or 'N/A'}",
-        f"Direction: {signal.direction} | Setup: {signal.setup_type}",
-        f"Confidence: trade {int(trade_conf * 100)}% / edge {int(edge_conf * 100)}%"
-        f"{f'（{edge_type}）' if edge_type else ''}",
-        f"Scores → long {long_score} / short {short_score}",
-        f"Gate: {gate_tag}",
-        f"Thresholds: {json.dumps(signal.thresholds_snapshot or {}, ensure_ascii=False)}",
-        f"Rejections: {rejection_text}",
-        f"Position sizing: core {signal.core_position_pct * 100:.1f}% + add {signal.add_position_pct * 100:.1f}%",
-        f"Levels: {_format_levels(signal)}",
-        "",
-        "Snapshot highlights:",
-        f"• Price: {_format_price(snap.tf_15m.close, symbol=signal.symbol)}",
-        f"• 4H RSI6: {snap.tf_4h.rsi6:.2f} | 1H RSI6: {snap.tf_1h.rsi6:.2f} | 15m RSI6: {snap.tf_15m.rsi6:.2f}",
-        f"• OI: {snap.deriv.open_interest:,.2f} | Funding: {snap.deriv.funding * 100:.4f}%",
-    ]
-
-    conditional = _plan_dict(getattr(signal, "conditional_plan", None))
-    if conditional:
-        lines.append("")
-        lines.append("⏳ 4H Conditional Plan")
-        lines.append(
-            f"Mode: {conditional.get('execution_mode', '')} | Direction: {conditional.get('direction', '')}"
-        )
-        lines.append(
-            f"Entry: {_format_price(conditional.get('entry_price'), symbol=signal.symbol)} | Valid until: {conditional.get('valid_until_utc') or 'N/A'}"
-        )
-        if conditional.get("explain"):
-            lines.append(f"Explain: {conditional.get('explain')}")
-
-    return "\n".join(lines)
-
-
 def format_conditional_plan_line(signal) -> str:
     plan = _plan_dict(getattr(signal, "conditional_plan", None))
     if not plan:
@@ -592,27 +477,6 @@ def format_conditional_plan_line(signal) -> str:
         f"{display_symbol} | ⏳4H 执行 {plan.get('execution_mode', '')} {plan.get('direction', '').upper()} "
         f"@ {entry_text} | 有效期 {valid_until} | {plan.get('explain', '')}"
     )
-
-
-def render_signal_dashboard(signals) -> str:
-    if not signals:
-        return "暂无交易信号。"
-
-    lines = [_beijing_time_header(), "====== 多币种概览 ======"]
-    for sig in signals:
-        lines.append(
-            format_summary_line(sig.symbol, sig.snapshot, sig)
-            if sig.snapshot
-            else f"{_display_symbol(sig.symbol):<11} | 数据缺失"
-        )
-
-    lines.append("")
-    lines.append("====== 详细解析 ======")
-    for sig in signals:
-        lines.append(format_signal_detail(sig))
-        lines.append("-------------------")
-
-    return "\n".join(lines)
 
 
 def emit_multi_tf_log(snapshot, signal, settings: Settings, exchange_id: str = "") -> None:
