@@ -4,7 +4,6 @@ from datetime import datetime, timedelta, timezone
 from bot.config import Settings
 from bot.logging_schema import build_signal_event
 from bot.main import (
-    format_action_line,
     format_conditional_plan_line,
     format_summary_line,
     is_actionable,
@@ -104,13 +103,9 @@ def test_formatters_handle_missing_fields():
     snapshot = _make_snapshot()
     signal = _make_signal(snapshot)
 
-    action_line = format_action_line(
-        signal.symbol, snapshot, signal, action_level="EXECUTE", bias="LONG"
-    )
     summary_line = format_summary_line(signal.symbol, snapshot, signal)
 
-    assert "Levels" in action_line
-    assert signal.symbol in summary_line
+    assert "TEST/USDC" in summary_line
 
 
 def test_is_actionable_classification():
