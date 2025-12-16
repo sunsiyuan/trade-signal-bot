@@ -3,13 +3,13 @@ import os
 from typing import Any, Dict
 
 
-DEFAULT_STATE = {"active_plans": {}, "sent_events": {}}
+DEFAULT_STATE = {"active_plans": {}, "sent_events": {}, "dedupe_store": {}}
 
 
 def load_state(path: str) -> Dict[str, Any]:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     if not os.path.exists(path):
-        return {"active_plans": {}, "sent_events": {}}
+        return DEFAULT_STATE.copy()
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -17,6 +17,7 @@ def load_state(path: str) -> Dict[str, Any]:
                 return DEFAULT_STATE.copy()
             data.setdefault("active_plans", {})
             data.setdefault("sent_events", {})
+            data.setdefault("dedupe_store", {})
             return data
     except Exception:
         return DEFAULT_STATE.copy()

@@ -451,6 +451,7 @@ def main():
 
     state_path = os.path.join(".state", "state.json")
     state = load_state(state_path)
+    dedupe_store = state.setdefault("dedupe_store", {})
 
     exchange = ccxt.hyperliquid({"enableRateLimit": True})
     exchange.load_markets()
@@ -552,8 +553,35 @@ def main():
         elif mode == "PLACE_LIMIT_4H":
             current_action = "LIMIT_4H"
             existing = state.get("active_plans", {}).get(sig.symbol)
+            dedupe_key = base_plan.get("signal_id") or f"{sig.symbol}:{mode}"
+            dedupe_payload = dedupe_store.get(dedupe_key)
+
+            print(
+                json.dumps(
+                    {
+                        "event": "CREATED_dedupe_check",
+                        "signal_id": base_plan.get("signal_id"),
+                        "dedupe_key": dedupe_key,
+                        "symbol": sig.symbol,
+                        "direction": base_plan.get("direction"),
+                        "execution_mode": mode,
+                        "valid_until_utc": base_plan.get("valid_until_utc"),
+                        "state_store_hit": dedupe_payload is not None,
+                        "state_store_payload": dedupe_payload,
+                    },
+                    ensure_ascii=False,
+                )
+            )
             if not existing or existing.get("signal_id") != base_plan.get("signal_id"):
-                if not _event_sent(state.get("sent_events", {}), base_plan.get("signal_id"), "CREATED"):
+                if dedupe_payload:
+                    _mark_event_sent(
+                        state.setdefault("sent_events", {}),
+                        base_plan.get("signal_id"),
+                        "CREATED",
+                    )
+                elif not _event_sent(
+                    state.get("sent_events", {}), base_plan.get("signal_id"), "CREATED"
+                ):
                     reason = plan.get("explain") or sig.reason or "创建4H限价计划"
                     action_messages.append(
                         _format_action_event_message(
@@ -564,6 +592,7 @@ def main():
                         )
                     )
                     _mark_event_sent(state.setdefault("sent_events", {}), base_plan.get("signal_id"), "CREATED")
+                dedupe_store[dedupe_key] = base_plan
                 state.setdefault("active_plans", {})[sig.symbol] = base_plan
         elif mode == "EXECUTE_NOW":
             current_action = "EXECUTE_NOW"
