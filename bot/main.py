@@ -19,6 +19,10 @@ def _beijing_now() -> datetime:
     return datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=8)))
 
 
+def _beijing_time_header() -> str:
+    return f"⏱ 北京时间: {_beijing_now().strftime('%Y-%m-%d %H:%M')}"
+
+
 def _plan_dict(plan):
     if plan is None:
         return None
@@ -218,6 +222,7 @@ def _format_action_event_message(event: str, plan: Dict, reason: str, signal_id:
     invalidation = _format_price(plan.get("invalidation_price"))
     return "\n".join(
         [
+            _beijing_time_header(),
             f"【{event}】交易动作更新",
             f"ID: {signal_id}",
             f"标的: {plan.get('symbol')} | 方向: {plan.get('direction', '').upper()} | 模式: {plan.get('execution_mode')}",
@@ -416,7 +421,7 @@ def render_signal_dashboard(signals) -> str:
     if not signals:
         return "暂无交易信号。"
 
-    lines = ["====== 多币种概览 ======"]
+    lines = [_beijing_time_header(), "====== 多币种概览 ======"]
     for sig in signals:
         lines.append(
             format_summary_line(sig.symbol, sig.snapshot, sig)
@@ -478,6 +483,7 @@ def main():
     summary_lines = []
     action_messages = []
     execute_now_messages = []
+    header = _beijing_time_header()
     now = datetime.now(timezone.utc)
 
     # Step 1: reconcile existing active plans
@@ -583,7 +589,7 @@ def main():
 
         summary_lines.append(format_summary_compact(sig.symbol, snap, current_action))
 
-    summary_message = "\n".join(summary_lines)
+    summary_message = "\n".join([header] + summary_lines)
     print(summary_message)
 
     action_token = base_settings.telegram_action_token
