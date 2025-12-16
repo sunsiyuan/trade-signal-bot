@@ -49,11 +49,19 @@ def build_conditional_plan_from_intent(
     atr = intent.atr_4h
     entry_price = intent.entry_price
 
+    def _direction_allows_entry(current_price: float, ideal_entry: float) -> bool:
+        if intent.direction == "long":
+            return ideal_entry <= current_price
+        if intent.direction == "short":
+            return ideal_entry >= current_price
+        return True
+
     if (
         intent.allow_execute_now
         and current is not None
         and entry_price is not None
         and atr
+        and _direction_allows_entry(current, entry_price)
         and abs(current - entry_price) <= 0.35 * atr
     ):
         return ConditionalPlan(
@@ -66,6 +74,16 @@ def build_conditional_plan_from_intent(
         )
 
     if atr and current is not None and entry_price is not None:
+        if not _direction_allows_entry(current, entry_price):
+            return ConditionalPlan(
+                execution_mode="WATCH_ONLY",
+                direction=intent.direction,
+                entry_price=None,
+                valid_until_utc=None,
+                cancel_if=_cancel_rules(None),
+                explain="Entry on wrong side of current price for direction",
+            )
+
         if abs(current - entry_price) <= 1.5 * atr:
             valid_until = now_plus_hours(intent.ttl_hours)
             return ConditionalPlan(

@@ -329,8 +329,8 @@ def build_execution_intent_mr(
     return ExecutionIntent(
         symbol=snap.symbol,
         direction=signal.direction,
-        entry_price=ma25,
-        entry_reason="MR_MA25",
+        entry_price=signal.entry,
+        entry_reason="MR_ENTRY",
         invalidation_price=signal.sl,
         atr_4h=resolve_atr_4h(snap),
         ttl_hours=2,
