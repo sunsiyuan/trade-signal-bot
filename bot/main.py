@@ -133,22 +133,6 @@ def _extract_mark_price(snapshot) -> Optional[float]:
         return None
 
     try:
-        tf_15m = getattr(snapshot, "tf_15m", None)
-        if tf_15m:
-            prices = getattr(tf_15m, "prices", None)
-            if isinstance(prices, dict):
-                mark = prices.get("mark")
-                if mark is not None:
-                    return mark
-                price_last = prices.get("price_last")
-                if price_last is not None:
-                    return price_last
-
-            for attr in ("mark", "price_last", "close"):
-                value = getattr(tf_15m, attr, None)
-                if value is not None:
-                    return value
-
         deriv = getattr(snapshot, "deriv", None)
         if deriv and getattr(deriv, "mark_price", None) is not None:
             return deriv.mark_price
@@ -335,13 +319,13 @@ def format_action_plan_message(
 
     event_display = {
         "CREATED": "设置限价单",
-        "TRADENOW": "立刻交易",
+        "TRADE_NOW": "立刻交易",
     }.get(event, "设置限价单" if event.startswith("CREATED") else event)
 
     return "\n".join(
         [
             _beijing_time_header(),
-            f"【{event_display}】交易动作更新",
+            f"【{event_display}】",
             f"ID: {signal_id}",
             f"标的: {symbol} | 方向: {direction.upper()} | 模式: {execution_mode}",
             f"现价: {price} | 15m RSI6: {rsi_text}",
