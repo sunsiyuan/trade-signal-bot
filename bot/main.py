@@ -3,11 +3,15 @@ import json
 import os
 from dataclasses import asdict, is_dataclass, replace
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
 import ccxt
 
 from .config import Settings
+
+
+_DEFAULT_PRICE_QUANTIZATION = Settings().price_quantization
 from .data_client import HyperliquidDataClient
 from .logging_schema import build_signal_event, write_jsonl_event
 from .notify import Notifier
@@ -83,10 +87,28 @@ def _format_pct(value: float) -> str:
     return f"{round(value * 100):d}%"
 
 
-def _format_price(value: float) -> str:
+def _get_price_decimals(symbol: Optional[str], settings: Optional[Settings]) -> int:
+    mapping = getattr(settings, "price_quantization", None) or _DEFAULT_PRICE_QUANTIZATION
+    base = symbol.split("/")[0] if symbol else None
+    step = mapping.get(base) if mapping else None
+
+    if step is None:
+        return 4
+
+    try:
+        step_decimal = Decimal(str(step)).normalize()
+        exponent = step_decimal.as_tuple().exponent
+        decimals = -exponent if exponent < 0 else 0
+        return decimals + 1
+    except Exception:
+        return 4
+
+
+def _format_price(value: float, symbol: Optional[str] = None, settings: Optional[Settings] = None) -> str:
     if value is None:
         return "NA"
-    return f"{value:.4f}"
+    decimals = _get_price_decimals(symbol, settings)
+    return f"{value:.{decimals}f}"
 
 
 def _format_oi(value: float) -> str:
@@ -229,7 +251,9 @@ def _log_dedupe(info: Dict[str, Any]) -> None:
 def format_summary_compact(symbol, snapshot, action: str) -> str:
     mark_price = _extract_mark_price(snapshot)
     fallback_price = getattr(snapshot.tf_15m, "close", None) if snapshot else None
-    price = _format_price(mark_price if mark_price is not None else fallback_price)
+    price = _format_price(
+        mark_price if mark_price is not None else fallback_price, symbol=symbol
+    )
     regime_icon, regime_cn = _regime_display(
         getattr(snapshot, "regime", ""),
         getattr(snapshot.tf_4h, "trend_label", "") if snapshot else "",
@@ -265,6 +289,7 @@ def _format_valid_until(plan: Dict) -> str:
 def _format_tp_values(signal, plan: Dict) -> str:
     tps = []
     tp_container = getattr(signal, "tp", None) if signal else None
+    symbol = plan.get("symbol") or getattr(signal, "symbol", None)
     for key in ("tp1", "tp2", "tp3"):
         value = plan.get(key)
         if value is None and signal:
@@ -273,7 +298,7 @@ def _format_tp_values(signal, plan: Dict) -> str:
             if value is None:
                 value = getattr(signal, key, None)
         if value is not None:
-            tps.append(_format_price(value))
+            tps.append(_format_price(value, symbol=symbol))
 
     return "/".join(tps) if tps else "-"
 
@@ -288,9 +313,11 @@ def _format_sl_value(signal, plan: Dict) -> str:
         plan.get("invalidation_price"),
     ]
 
+    symbol = plan.get("symbol") or getattr(signal, "symbol", None)
+
     for value in sl_candidates:
         if value is not None:
-            return _format_price(value)
+            return _format_price(value, symbol=symbol)
     return "-"
 
 
@@ -303,15 +330,17 @@ def format_action_plan_message(
     reason: str = "",
 ) -> str:
     plan = _plan_dict(plan) or {}
-    price = _format_price(_extract_mark_price(snap))
+    symbol = plan.get("symbol") or getattr(signal, "symbol", "")
+    price = _format_price(_extract_mark_price(snap), symbol=symbol)
     rsi6 = _extract_rsi6_value(snap)
     rsi_text = f"{rsi6:.1f}" if rsi6 is not None else "NA"
 
-    symbol = plan.get("symbol") or getattr(signal, "symbol", "")
     direction = (plan.get("direction") or getattr(signal, "direction", "")) or ""
     execution_mode = plan.get("execution_mode") or getattr(plan, "execution_mode", "")
     entry_price = plan.get("entry_price")
-    entry_text = _format_price(entry_price) if entry_price is not None else "-"
+    entry_text = (
+        _format_price(entry_price, symbol=symbol) if entry_price is not None else "-"
+    )
     sl_text = _format_sl_value(signal, plan)
     tp_text = _format_tp_values(signal, plan)
     valid_until = _format_valid_until(plan)
@@ -376,7 +405,9 @@ def is_actionable(signal, snapshot, settings: Settings):
 def format_action_line(symbol, snapshot, signal, action_level: str, bias: str) -> str:
     mark_price = _extract_mark_price(snapshot)
     fallback_price = getattr(snapshot.tf_15m, "close", None) if snapshot else None
-    price = _format_price(mark_price if mark_price is not None else fallback_price)
+    price = _format_price(
+        mark_price if mark_price is not None else fallback_price, symbol=symbol
+    )
     regime_icon, regime_cn = _regime_display(
         getattr(snapshot, "regime", ""),
         getattr(snapshot.tf_4h, "trend_label", "") if snapshot else "",
@@ -425,7 +456,9 @@ def format_action_line(symbol, snapshot, signal, action_level: str, bias: str) -
 def format_summary_line(symbol, snapshot, signal) -> str:
     mark_price = _extract_mark_price(snapshot)
     fallback_price = getattr(snapshot.tf_15m, "close", None) if snapshot else None
-    price = _format_price(mark_price if mark_price is not None else fallback_price)
+    price = _format_price(
+        mark_price if mark_price is not None else fallback_price, symbol=symbol
+    )
     regime_icon, regime_cn = _regime_display(
         getattr(snapshot, "regime", ""),
         getattr(snapshot.tf_4h, "trend_label", "") if snapshot else "",
@@ -484,7 +517,7 @@ def format_signal_detail(signal):
         f"Levels: {_format_levels(signal)}",
         "",
         "Snapshot highlights:",
-        f"• Price: {_format_price(snap.tf_15m.close)}",
+        f"• Price: {_format_price(snap.tf_15m.close, symbol=signal.symbol)}",
         f"• 4H RSI6: {snap.tf_4h.rsi6:.2f} | 1H RSI6: {snap.tf_1h.rsi6:.2f} | 15m RSI6: {snap.tf_15m.rsi6:.2f}",
         f"• OI: {snap.deriv.open_interest:,.2f} | Funding: {snap.deriv.funding * 100:.4f}%",
     ]
@@ -497,7 +530,7 @@ def format_signal_detail(signal):
             f"Mode: {conditional.get('execution_mode', '')} | Direction: {conditional.get('direction', '')}"
         )
         lines.append(
-            f"Entry: {_format_price(conditional.get('entry_price'))} | Valid until: {conditional.get('valid_until_utc') or 'N/A'}"
+            f"Entry: {_format_price(conditional.get('entry_price'), symbol=signal.symbol)} | Valid until: {conditional.get('valid_until_utc') or 'N/A'}"
         )
         if conditional.get("explain"):
             lines.append(f"Explain: {conditional.get('explain')}")
@@ -511,7 +544,11 @@ def format_conditional_plan_line(signal) -> str:
         return ""
 
     entry_price = plan.get("entry_price")
-    entry_text = _format_price(entry_price) if entry_price is not None else "N/A"
+    entry_text = (
+        _format_price(entry_price, symbol=signal.symbol)
+        if entry_price is not None
+        else "N/A"
+    )
     valid_until = plan.get("valid_until_utc") or "N/A"
 
     return (
