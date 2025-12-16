@@ -861,7 +861,7 @@ def main():
             "\n\n".join(action_messages), token=action_token, chat_id=action_chat
         )
 
-    if execute_now_messages and (notifier.ftqq_key or notifier.webhook_url):
+    if execute_now_messages and notifier.ftqq_key:
         combined = "\n\n".join(execute_now_messages)
         results.update(
             notifier.send(

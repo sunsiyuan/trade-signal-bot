@@ -89,7 +89,7 @@ class Settings:
         default_factory=lambda: os.getenv("TELEGRAM_SUMMARY_CHAT_ID")
         or os.getenv("TELEGRAM_CHAT_ID")
     )
-    ftqq_key: Optional[str] = field(default_factory=lambda: os.getenv("FTQQ_KEY"))
+    ftqq_key: Optional[str] = field(default_factory=lambda: os.getenv("FT_SENDKEY"))
     webhook_url: Optional[str] = field(
         default_factory=lambda: os.getenv("WEBHOOK_URL")
     )
