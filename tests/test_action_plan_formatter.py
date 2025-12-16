@@ -55,7 +55,9 @@ def _snapshot(mark_price: float | None, price_last: float) -> MarketSnapshot:
     )
 
 
-def _signal(snapshot: MarketSnapshot, tp1=130.0, tp2=None, sl=95.0) -> TradeSignal:
+def _signal(
+    snapshot: MarketSnapshot, tp1=130.0, tp2=None, sl=95.0, setup_type: str = "trend_long"
+) -> TradeSignal:
     sig = TradeSignal(
         symbol=snapshot.symbol,
         direction="long",
@@ -64,6 +66,7 @@ def _signal(snapshot: MarketSnapshot, tp1=130.0, tp2=None, sl=95.0) -> TradeSign
         tp2=tp2,
         sl=sl,
     )
+    sig.setup_type = setup_type
     sig.execution_intent = ExecutionIntent(
         symbol=snapshot.symbol,
         direction="long",
@@ -88,12 +91,14 @@ def test_format_action_plan_message_with_mark_and_multiple_tp():
 
     msg = format_action_plan_message(signal, snap, plan, signal_id="sig-1", event="CREATED")
 
-    assert "【设置限价单】交易动作更新" in msg
+    assert "【设置限价单】" in msg
+    assert "标的: TEST/USDC | 方向: LONG | 模式: 趋势跟随做多" in msg
     assert "现价: 123.4567" in msg
     assert "TP: 130.0000/135.0000" in msg
     assert "SL: 95.0000" in msg
     assert "15m RSI6: 61.2" in msg
     assert "2024-01-01" in msg
+    assert "TEST/USDC:USDC" not in msg
 
 
 def test_format_action_plan_message_fallbacks_and_no_none_strings():
@@ -110,6 +115,7 @@ def test_format_action_plan_message_fallbacks_and_no_none_strings():
 
     msg = format_action_plan_message(signal, snap, plan, signal_id="sig-2", event="EXECUTE_NOW")
 
+    assert "模式: 趋势跟随做多" in msg
     assert "现价: 110.9876" in msg
     assert "TP: 125.5000" in msg
     assert "SL: 94.5000" in msg  # from execution_intent invalidation
@@ -130,4 +136,4 @@ def test_format_action_plan_message_tradenow_event_label():
 
     msg = format_action_plan_message(signal, snap, plan, signal_id="sig-3", event="TRADENOW")
 
-    assert "【立刻交易】交易动作更新" in msg
+    assert "【立刻交易】" in msg

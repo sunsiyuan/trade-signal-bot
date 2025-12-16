@@ -81,6 +81,20 @@ def _setup_code(setup_type: str) -> str:
     return mapping.get(setup_type, setup_type or "none")
 
 
+def _setup_cn(setup_type: Optional[str]) -> str:
+    mapping = {
+        "trend_long": "趋势跟随做多",
+        "trend_short": "趋势跟随做空",
+        "mr_long": "均值回归做多",
+        "mr_short": "均值回归做空",
+        "lh_long": "流动性猎杀做多",
+        "lh_short": "流动性猎杀做空",
+    }
+    if not setup_type:
+        return "-"
+    return mapping.get(setup_type, setup_type)
+
+
 def _format_pct(value: float) -> str:
     if value is None:
         return "0%"
@@ -109,6 +123,12 @@ def _format_price(value: float, symbol: Optional[str] = None, settings: Optional
         return "NA"
     decimals = _get_price_decimals(symbol, settings)
     return f"{value:.{decimals}f}"
+
+
+def _display_symbol(symbol: Optional[str]) -> str:
+    if not symbol:
+        return ""
+    return symbol.split(":")[0]
 
 
 def _format_oi(value: float) -> str:
@@ -158,6 +178,14 @@ def _extract_mark_price(snapshot) -> Optional[float]:
         deriv = getattr(snapshot, "deriv", None)
         if deriv and getattr(deriv, "mark_price", None) is not None:
             return deriv.mark_price
+
+        tf_15m = getattr(snapshot, "tf_15m", None)
+        if tf_15m is not None:
+            prices = getattr(tf_15m, "prices", {}) or {}
+            if isinstance(prices, dict) and prices.get("mark") is not None:
+                return prices.get("mark")
+            if getattr(tf_15m, "price_last", None) is not None:
+                return getattr(tf_15m, "price_last")
 
         return getattr(snapshot, "price", None)
     except Exception:
@@ -249,6 +277,7 @@ def _log_dedupe(info: Dict[str, Any]) -> None:
 
 
 def format_summary_compact(symbol, snapshot, action: str) -> str:
+    display_symbol = _display_symbol(symbol)
     mark_price = _extract_mark_price(snapshot)
     fallback_price = getattr(snapshot.tf_15m, "close", None) if snapshot else None
     price = _format_price(
@@ -258,7 +287,7 @@ def format_summary_compact(symbol, snapshot, action: str) -> str:
         getattr(snapshot, "regime", ""),
         getattr(snapshot.tf_4h, "trend_label", "") if snapshot else "",
     )
-    return f"{symbol} | 💰 {price} | {regime_icon}{regime_cn} | {_action_label(action)}"
+    return f"{display_symbol} | 💰 {price} | {regime_icon}{regime_cn} | {_action_label(action)}"
 
 
 def _extract_rsi6_value(snapshot) -> Optional[float]:
@@ -331,12 +360,14 @@ def format_action_plan_message(
 ) -> str:
     plan = _plan_dict(plan) or {}
     symbol = plan.get("symbol") or getattr(signal, "symbol", "")
+    display_symbol = _display_symbol(symbol)
     price = _format_price(_extract_mark_price(snap), symbol=symbol)
     rsi6 = _extract_rsi6_value(snap)
     rsi_text = f"{rsi6:.1f}" if rsi6 is not None else "NA"
 
     direction = (plan.get("direction") or getattr(signal, "direction", "")) or ""
-    execution_mode = plan.get("execution_mode") or getattr(plan, "execution_mode", "")
+    setup_type = getattr(signal, "setup_type", None) or plan.get("setup_type")
+    execution_mode = _setup_cn(setup_type)
     entry_price = plan.get("entry_price")
     entry_text = (
         _format_price(entry_price, symbol=symbol) if entry_price is not None else "-"
@@ -349,6 +380,8 @@ def format_action_plan_message(
     event_display = {
         "CREATED": "设置限价单",
         "TRADE_NOW": "立刻交易",
+        "TRADENOW": "立刻交易",
+        "EXECUTE_NOW": "立刻交易",
     }.get(event, "设置限价单" if event.startswith("CREATED") else event)
 
     return "\n".join(
@@ -356,7 +389,7 @@ def format_action_plan_message(
             _beijing_time_header(),
             f"【{event_display}】",
             f"ID: {signal_id}",
-            f"标的: {symbol} | 方向: {direction.upper()} | 模式: {execution_mode}",
+            f"标的: {display_symbol} | 方向: {direction.upper()} | 模式: {execution_mode}",
             f"现价: {price} | 15m RSI6: {rsi_text}",
             f"入场: {entry_text} | SL: {sl_text} | TP: {tp_text}",
             f"有效期: {valid_until}",
@@ -403,6 +436,7 @@ def is_actionable(signal, snapshot, settings: Settings):
 
 
 def format_action_line(symbol, snapshot, signal, action_level: str, bias: str) -> str:
+    display_symbol = _display_symbol(symbol)
     mark_price = _extract_mark_price(snapshot)
     fallback_price = getattr(snapshot.tf_15m, "close", None) if snapshot else None
     price = _format_price(
@@ -445,7 +479,7 @@ def format_action_line(symbol, snapshot, signal, action_level: str, bias: str) -
 
     bias_block = f" {bias_icon}{bias_cn}" if bias_icon else ""
     return (
-        f"{symbol} | 💰 {price} | {regime_icon}{regime_cn} | "
+        f"{display_symbol} | 💰 {price} | {regime_icon}{regime_cn} | "
         f"{action_icon} {action_cn}{bias_block} | "
         f"Strat {strat} | Trade {trade_conf} / Edge {edge_conf_display} | "
         f"15m RSI6 {rsi_15m} | 4H MACD hist {macd_hist_4h} | Levels {levels} | "
@@ -454,6 +488,7 @@ def format_action_line(symbol, snapshot, signal, action_level: str, bias: str) -
 
 
 def format_summary_line(symbol, snapshot, signal) -> str:
+    display_symbol = _display_symbol(symbol)
     mark_price = _extract_mark_price(snapshot)
     fallback_price = getattr(snapshot.tf_15m, "close", None) if snapshot else None
     price = _format_price(
@@ -476,7 +511,7 @@ def format_summary_line(symbol, snapshot, signal) -> str:
     setup = _setup_code(getattr(signal, "setup_type", "none"))
 
     return (
-        f"{symbol} | 💰 {price} | {regime_icon}{regime_cn} | "
+        f"{display_symbol} | 💰 {price} | {regime_icon}{regime_cn} | "
         f"{decision_icon} {decision_cn} | Trade {trade_conf} / Edge {edge_conf_display} | "
         f"15m RSI6 {rsi_15m} | 4H MACD hist {macd_hist_4h} | Setup {setup}"
     )
@@ -484,8 +519,9 @@ def format_summary_line(symbol, snapshot, signal) -> str:
 
 def format_signal_detail(signal):
     snap = signal.snapshot
+    display_symbol = _display_symbol(signal.symbol)
     if not snap:
-        return f"{signal.symbol}: snapshot unavailable"
+        return f"{display_symbol}: snapshot unavailable"
 
     trade_conf = signal.trade_confidence or 0.0
     edge_conf = signal.edge_confidence if hasattr(signal, "edge_confidence") else 0.0
@@ -503,7 +539,7 @@ def format_signal_detail(signal):
     rejection_text = ", ".join(signal.rejected_reasons or []) or "-"
 
     lines = [
-        f"📌 {signal.symbol} — Trade Signal",
+        f"📌 {display_symbol} — Trade Signal",
         f"⏱ {beijing_ts.strftime('%Y-%m-%d %H:%M')} (UTC+8)",
         f"{regime_icon}{regime_cn} | Regime reason: {snap.regime_reason or 'N/A'}",
         f"Direction: {signal.direction} | Setup: {signal.setup_type}",
@@ -543,6 +579,7 @@ def format_conditional_plan_line(signal) -> str:
     if not plan:
         return ""
 
+    display_symbol = _display_symbol(signal.symbol)
     entry_price = plan.get("entry_price")
     entry_text = (
         _format_price(entry_price, symbol=signal.symbol)
@@ -552,7 +589,7 @@ def format_conditional_plan_line(signal) -> str:
     valid_until = plan.get("valid_until_utc") or "N/A"
 
     return (
-        f"{signal.symbol} | ⏳4H 执行 {plan.get('execution_mode', '')} {plan.get('direction', '').upper()} "
+        f"{display_symbol} | ⏳4H 执行 {plan.get('execution_mode', '')} {plan.get('direction', '').upper()} "
         f"@ {entry_text} | 有效期 {valid_until} | {plan.get('explain', '')}"
     )
 
@@ -566,7 +603,7 @@ def render_signal_dashboard(signals) -> str:
         lines.append(
             format_summary_line(sig.symbol, sig.snapshot, sig)
             if sig.snapshot
-            else f"{sig.symbol:<11} | 数据缺失"
+            else f"{_display_symbol(sig.symbol):<11} | 数据缺失"
         )
 
     lines.append("")
@@ -691,6 +728,7 @@ def main():
             "symbol": sig.symbol,
             "execution_mode": mode,
             "direction": plan.get("direction") or sig.direction,
+            "setup_type": getattr(sig, "setup_type", None),
             "entry_price": entry_price,
             "invalidation_price": invalidation_price,
             "tp1": getattr(sig, "tp1", None),
