@@ -62,7 +62,7 @@ def make_timeframe(
 
 
 def make_deriv(
-    oi_change_pct=None,
+    oi_change_24h=0.0,
     has_large_ask_wall=False,
     has_large_bid_wall=False,
     ask_wall_size=0.0,
@@ -71,8 +71,7 @@ def make_deriv(
     return DerivativeIndicators(
         funding=0.0,
         open_interest=0.0,
-        oi_change_24h=0.0,
-        oi_change_pct=oi_change_pct,
+        oi_change_24h=oi_change_24h,
         orderbook_asks=[],
         orderbook_bids=[],
         ask_wall_size=ask_wall_size,
@@ -180,7 +179,7 @@ def test_positive_liquidity_hunt_trigger():
         low_last_n=99.0,
     )
     deriv = make_deriv(
-        oi_change_pct=6.0,
+        oi_change_24h=6.0,
         has_large_ask_wall=True,
         ask_wall_size=12.0,
         bid_wall_size=1.0,

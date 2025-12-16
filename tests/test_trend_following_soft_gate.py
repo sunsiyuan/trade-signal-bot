@@ -88,7 +88,6 @@ def test_low_conf_still_trades_with_reduced_size():
         funding=0.03,
         open_interest=100,
         oi_change_24h=0.0,
-        oi_change_pct=0.0,
         liquidity_comment="balanced",
     )
 
@@ -119,7 +118,6 @@ def test_high_conf_boosts_confidence_and_size():
         funding=-0.05,
         open_interest=100,
         oi_change_24h=0.0,
-        oi_change_pct=0.0,
         liquidity_comment="bids dominant",
     )
 
