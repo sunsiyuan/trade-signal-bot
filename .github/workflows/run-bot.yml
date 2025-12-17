@@ -19,9 +19,7 @@ jobs:
       TELEGRAM_ACTION_CHAT_ID: ${{ secrets.TELEGRAM_ACTION_CHAT_ID }}
       TELEGRAM_SUMMARY_BOT_TOKEN: ${{ secrets.TELEGRAM_SUMMARY_BOT_TOKEN }}
       TELEGRAM_SUMMARY_CHAT_ID: ${{ secrets.TELEGRAM_SUMMARY_CHAT_ID }}
-      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      FTQQ_KEY: ${{ secrets.FTQQ_KEY }}
+      FTQQ_KEY: ${{ secrets.FT_SENDKEY }}
       WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
 
     steps:
