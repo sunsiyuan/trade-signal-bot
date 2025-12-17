@@ -1,9 +1,8 @@
 """Structured signal logging helpers (schema v2).
 
-Schema 2.2 aligns the serialized event with the actual runtime data
-available inside :class:`MarketSnapshot` / :class:`TradeSignal` objects so
-downstream consumers no longer see placeholder fields (e.g. missing mark
-price, orderbook aggregates, or snapshot timestamp).
+Schema 2.4 removes the settings symbol along with prior removal of order book
+line items and tracked symbol lists to avoid logging sensitive details while
+keeping the rest of the market snapshot intact.
 """
 
 from __future__ import annotations
@@ -20,7 +19,7 @@ from .models import MarketSnapshot
 from .signal_engine import TradeSignal
 
 
-SCHEMA_VERSION = "2.2"
+SCHEMA_VERSION = "2.4"
 
 
 def _safe_iso(dt: Optional[datetime]) -> Optional[str]:
@@ -92,8 +91,6 @@ def _timeframe_block(tf) -> Dict[str, Any]:
 
 def _settings_snapshot(settings: Settings) -> Dict[str, Any]:
     return {
-        "symbol": settings.symbol,
-        "tracked_symbols": settings.tracked_symbols,
         "timeframes": {
             "tf_4h": settings.tf_4h,
             "tf_1h": settings.tf_1h,
@@ -196,8 +193,6 @@ def build_signal_event(
             "price": getattr(snapshot.deriv, "mark_price", None)
             or getattr(snapshot.tf_15m, "close", None),
             "snapshot_ts_utc": _safe_iso(getattr(snapshot, "ts", None)),
-            "asks": getattr(snapshot, "asks", None),
-            "bids": getattr(snapshot, "bids", None),
             "settings_snapshot": _settings_snapshot(settings),
         },
         "alignment": {
@@ -213,10 +208,6 @@ def build_signal_event(
             "open_interest": snapshot.deriv.open_interest,
             "oi_change_24h": snapshot.deriv.oi_change_24h,
             "mark_price": getattr(snapshot.deriv, "mark_price", None),
-            "orderbook": {
-                "asks": snapshot.deriv.orderbook_asks,
-                "bids": snapshot.deriv.orderbook_bids,
-            },
             "liquidity": {
                 "ask_wall_size": snapshot.deriv.ask_wall_size,
                 "bid_wall_size": snapshot.deriv.bid_wall_size,
