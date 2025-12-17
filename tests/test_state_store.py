@@ -9,6 +9,11 @@ class DummySignal:
             setattr(self, key, value)
 
 
+class DummySettings:
+    def __init__(self, price_quantization):
+        self.price_quantization = price_quantization
+
+
 def test_watch_signals_are_not_cached(tmp_path):
     base_dir = tmp_path / "state"
     now = datetime(2024, 1, 1, tzinfo=timezone.utc)
@@ -105,3 +110,32 @@ def test_compute_signal_id_is_stable():
     sig2 = DummySignal(**payload)
 
     assert state_store.compute_signal_id(sig1) == state_store.compute_signal_id(sig2)
+
+
+def test_compute_signal_id_quantizes_prices():
+    price_quantization = {"ETH": 10}
+    settings = DummySettings(price_quantization)
+
+    sig1 = DummySignal(
+        symbol="ETH/USDC",
+        entry=2010.1,
+        sl=1900.4,
+        tp1=2100.2,
+        tp2=2200.6,
+        tp3=2300.5,
+        settings=settings,
+    )
+    sig2 = DummySignal(
+        symbol="ETH/USDC",
+        entry=2014.9,
+        sl=1899.6,
+        tp1=2104.6,
+        tp2=2204.4,
+        tp3=2304.4,
+        settings=settings,
+    )
+
+    assert (
+        state_store.compute_signal_id(sig1, price_quantization=price_quantization)
+        == state_store.compute_signal_id(sig2, price_quantization=price_quantization)
+    )

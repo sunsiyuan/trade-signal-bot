@@ -789,7 +789,9 @@ def main():
         signal = engine.generate_signal(snapshot)
 
         # 给 signal 注入 signal_id（用于 dedupe、状态机、通知关联）
-        signal.signal_id = compute_signal_id(signal)
+        signal.signal_id = compute_signal_id(
+            signal, price_quantization=base_settings.price_quantization
+        )
 
         # 结构化日志（stdout + jsonl）
         emit_multi_tf_log(snapshot, signal, symbol_settings, exchange_id=exchange.id)
@@ -876,7 +878,9 @@ def main():
             invalidation_price = getattr(sig, "sl", None)
 
         # signal_id：若 signal 里已有就用，否则现算一个
-        signal_id = getattr(sig, "signal_id", None) or compute_signal_id(sig)
+        signal_id = getattr(sig, "signal_id", None) or compute_signal_id(
+            sig, price_quantization=base_settings.price_quantization
+        )
 
         # base_plan：写入全局 active_plans 时用，也用于通知消息展示
         base_plan = {
