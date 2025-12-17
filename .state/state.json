@@ -1,8 +1,29 @@
 {
-  "active_plans": {},
+  "active_plans": {
+    "ZEC/USDC:USDC": {
+      "signal_id": "0b5528aa82a3",
+      "symbol": "ZEC/USDC:USDC",
+      "execution_mode": "PLACE_LIMIT_4H",
+      "direction": "long",
+      "setup_type": "mr_long",
+      "entry_price": 380.05719943731265,
+      "invalidation_price": 367.37519943731263,
+      "tp1": 394.55091372302695,
+      "tp2": 399.0801994373127,
+      "tp3": null,
+      "sl": 367.37519943731263,
+      "regime": "high_vol_ranging",
+      "valid_until_utc": "2025-12-17T22:31:15.308059+00:00",
+      "created_utc": "2025-12-17T20:31:15.310554+00:00",
+      "status": "ACTIVE"
+    }
+  },
   "sent_events": {
     "bf8cc3af4142": [
       "EXECUTE_NOW"
+    ],
+    "0b5528aa82a3": [
+      "CREATED"
     ]
   }
 }
