@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, Optional, Tuple
 
 # ============================================================
@@ -123,7 +124,9 @@ def _canonical_json(payload: Dict[str, Any]) -> str:
 # ============================================================
 # signal_id：把 TradeSignal（或类似对象）映射成一个稳定 id
 # ============================================================
-def compute_signal_id(signal: Any) -> str:
+def compute_signal_id(
+    signal: Any, price_quantization: Optional[Dict[str, float]] = None
+) -> str:
     """
     生成 signal_id 的策略：
 
@@ -132,6 +135,8 @@ def compute_signal_id(signal: Any) -> str:
 
     2) 否则用一组“关键字段”拼成 payload，再对 canonical_json 做 sha1。
        目的：同一个策略机会（相同 symbol/regime/entry/sl/tp/...）得到同一个 signal_id。
+       - 如果提供 price_quantization（或 signal.settings.price_quantization），
+         会对 entry/sl/tp 做价格离散化，减少浮点抖动导致的 id 变化。
 
     ⚠️ 风险点（你排查“同一个 signal id 重复输出 create”时必须看这里）：
     - payload 里包含 entry/sl/tp_list：如果这些值每次计算有微小浮动（尤其 entry）
@@ -146,17 +151,36 @@ def compute_signal_id(signal: Any) -> str:
     if base_signal_id:
         return str(base_signal_id)
 
+    symbol = getattr(signal, "symbol", None)
+
+    def _get_price_step() -> Decimal:
+        base = symbol.split("/")[0] if symbol else ""
+        mapping = price_quantization or getattr(
+            getattr(signal, "settings", None), "price_quantization", None
+        )
+        step = (mapping or {}).get(base)
+        if step is None:
+            return Decimal("0.01")
+        return Decimal(str(step))
+
+    def _quantize_price(value: Optional[float]) -> Optional[float]:
+        if value is None:
+            return None
+        step = _get_price_step()
+        quantized = (Decimal(value) / step).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        return float(quantized * step)
+
     payload = {
-        "symbol": getattr(signal, "symbol", None),
+        "symbol": symbol,
         "regime": getattr(signal, "regime", None)
         or getattr(getattr(signal, "snapshot", None), "regime", None),
         "strategy": getattr(signal, "strategy", None) or getattr(signal, "setup_type", None),
-        "entry": getattr(signal, "entry", None),
-        "sl": getattr(signal, "sl", None),
+        "entry": _quantize_price(getattr(signal, "entry", None)),
+        "sl": _quantize_price(getattr(signal, "sl", None)),
         "tp_list": [
-            getattr(signal, "tp1", None),
-            getattr(signal, "tp2", None),
-            getattr(signal, "tp3", None),
+            _quantize_price(getattr(signal, "tp1", None)),
+            _quantize_price(getattr(signal, "tp2", None)),
+            _quantize_price(getattr(signal, "tp3", None)),
         ],
         "main_tf": getattr(signal, "main_tf", None)
         or getattr(signal, "timeframe", None),
