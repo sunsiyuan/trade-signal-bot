@@ -12,6 +12,9 @@
       "EXECUTE_NOW",
       "CREATED",
       "REGIME_CHANGED"
+    ],
+    "11dc7af3f511": [
+      "EXECUTE_NOW"
     ]
   }
 }
