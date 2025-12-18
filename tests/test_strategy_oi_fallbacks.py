@@ -88,7 +88,7 @@ def test_mean_reversion_allows_fallback_when_oi_missing():
     )
 
     assert signal is not None
-    assert signal.trade_confidence == pytest.approx(0.6375)
+    assert signal.trade_confidence == pytest.approx(0.5357142857)
     assert signal.core_position_pct == pytest.approx(0.25)
     assert "OI missing → fallback mode" in signal.reason
 

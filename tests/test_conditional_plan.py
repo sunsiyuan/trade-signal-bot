@@ -51,6 +51,9 @@ def _snapshot(price: float = 100.0, atr_4h: float = 10.0) -> MarketSnapshot:
         tf_1h=tf_1h,
         tf_15m=tf_15m,
         deriv=deriv,
+        rolling_candidate="trending",
+        rolling_candidate_dir="up",
+        rolling_candidate_streak=2,
     )
     snap.price_last = price
     return snap

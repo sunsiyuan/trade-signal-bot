@@ -414,6 +414,66 @@ def _log_dedupe(info: Dict[str, Any]) -> None:
     print(json.dumps(enriched, ensure_ascii=False))
 
 
+def _update_rolling_state(
+    symbol_state: Dict[str, Any],
+    candidate: Optional[str],
+    direction: Optional[str],
+    ts: Optional[datetime],
+) -> tuple[Dict[str, Any], bool]:
+    """Update rolling_state in symbol_state with streak tracking."""
+
+    rolling = symbol_state.setdefault(
+        "rolling_state",
+        {"candidate": None, "dir": None, "streak": 0, "last_ts": None},
+    )
+
+    prev_candidate = rolling.get("candidate")
+    prev_dir = rolling.get("dir")
+    prev_streak = int(rolling.get("streak", 0) or 0)
+    prev_ts = rolling.get("last_ts")
+
+    normalized_candidate = candidate
+    normalized_dir = direction if candidate == "trending" else None
+
+    if normalized_candidate == prev_candidate and normalized_dir == prev_dir:
+        streak = prev_streak + 1
+    else:
+        streak = 1
+
+    rolling["candidate"] = normalized_candidate
+    rolling["dir"] = normalized_dir
+    rolling["streak"] = streak
+    rolling["last_ts"] = ts.isoformat() if ts else None
+
+    changed = (
+        rolling["candidate"] != prev_candidate
+        or rolling["dir"] != prev_dir
+        or rolling["streak"] != prev_streak
+        or rolling["last_ts"] != prev_ts
+    )
+
+    return rolling, changed
+
+
+def _log_rolling_state(symbol: str, snapshot, rolling_prepared: bool) -> None:
+    candidate = getattr(snapshot, "rolling_candidate", None)
+    direction = getattr(snapshot, "rolling_candidate_dir", None)
+    streak = getattr(snapshot, "rolling_candidate_streak", None)
+    print(
+        json.dumps(
+            {
+                "type": "rolling_state",
+                "symbol": symbol,
+                "candidate": candidate,
+                "dir": direction,
+                "streak": streak,
+                "rolling_prepared": rolling_prepared,
+            },
+            ensure_ascii=False,
+        )
+    )
+
+
 # =========================
 # Summary：更紧凑的一行（用于 summary bot）
 # =========================
@@ -784,6 +844,27 @@ def main():
             symbol_settings, exchange=exchange, funding_rates=funding_rates
         )
         snapshot = client.build_market_snapshot()
+
+        # rolling regime candidate：使用 forming bar 先行确认，提前准备 PLACE_LIMIT_4H
+        symbol_state = _get_symbol_state(symbol)
+        rolling_state, rolling_dirty = _update_rolling_state(
+            symbol_state,
+            getattr(snapshot, "rolling_candidate", None),
+            getattr(snapshot, "rolling_candidate_dir", None),
+            getattr(snapshot, "ts", None),
+        )
+        snapshot.rolling_candidate = rolling_state.get("candidate")
+        snapshot.rolling_candidate_dir = rolling_state.get("dir")
+        snapshot.rolling_candidate_streak = int(rolling_state.get("streak", 0) or 0)
+        rolling_prepared = (
+            snapshot.rolling_candidate == "trending"
+            and snapshot.rolling_candidate_dir in {"up", "down"}
+            and snapshot.rolling_candidate_streak >= 2
+        )
+        setattr(snapshot, "rolling_prepared", rolling_prepared)
+        _log_rolling_state(symbol, snapshot, rolling_prepared)
+        if rolling_dirty:
+            dirty_symbols.add(symbol)
 
         # 从 snapshot 生成 signal
         signal = engine.generate_signal(snapshot)
