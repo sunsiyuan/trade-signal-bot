@@ -74,7 +74,17 @@ def _default_state() -> Dict[str, Any]:
     - updated_at_utc: 最近写入时间
     - signals: dict，key 为 "<symbol>|<signal_id>"，value 为该 signal 的记录
     """
-    return {"version": STATE_VERSION, "updated_at_utc": None, "signals": {}}
+    return {
+        "version": STATE_VERSION,
+        "updated_at_utc": None,
+        "signals": {},
+        "rolling_state": {
+            "candidate": None,
+            "dir": None,
+            "streak": 0,
+            "last_ts": None,
+        },
+    }
 
 
 # ============================================================
@@ -258,6 +268,10 @@ def load_state(symbol: str, base_dir: str = STATE_DIR) -> Dict[str, Any]:
         data.setdefault("signals", {})
         data.setdefault("version", STATE_VERSION)
         data.setdefault("updated_at_utc", None)
+        data.setdefault(
+            "rolling_state",
+            {"candidate": None, "dir": None, "streak": 0, "last_ts": None},
+        )
         return data
     except Exception:
         backup_path = f"{path}.bak"

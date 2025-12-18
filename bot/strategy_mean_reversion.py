@@ -216,7 +216,7 @@ def build_mean_reversion_signal(
 
         # 如果是 fallback（OI 缺失），则降低 confidence 并缩仓位
         if fallback_mode:
-            confidence *= fallback_confidence_mult
+            trade_confidence *= fallback_confidence_mult
             core_pct *= fallback_core_position_mult
             add_pct *= fallback_add_position_mult
 

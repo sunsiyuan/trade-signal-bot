@@ -58,6 +58,9 @@ def build_snapshot():
         deriv=deriv,
         regime="high_vol_ranging",
         regime_reason="range with volatility",
+        rolling_candidate="trending",
+        rolling_candidate_dir="down",
+        rolling_candidate_streak=2,
         bids=120.0,
         asks=100.0,
     )

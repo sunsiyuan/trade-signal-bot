@@ -180,6 +180,11 @@ class MarketSnapshot:
     rsi_15m: Optional[float] = None
     rsi_1h: Optional[float] = None
 
+    # --- Rolling regime candidate（不替代正式 regime） ---
+    rolling_candidate: Optional[str] = None  # 'trending' | 'ranging' | None
+    rolling_candidate_dir: Optional[str] = None  # 'up' | 'down' | None
+    rolling_candidate_streak: int = 0
+
     # --- 盘口汇总 ---
     asks: float = 0.0
     bids: float = 0.0

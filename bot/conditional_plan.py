@@ -76,6 +76,22 @@ def _cancel_rules(valid_until: Optional[str]) -> dict:
     }
 
 
+def _rolling_confirmed(snap: MarketSnapshot) -> bool:
+    candidate = getattr(snap, "rolling_candidate", None)
+    direction = getattr(snap, "rolling_candidate_dir", None)
+    streak = getattr(snap, "rolling_candidate_streak", 0) or 0
+    prepared_flag = getattr(snap, "rolling_prepared", None)
+
+    if isinstance(prepared_flag, bool):
+        return prepared_flag
+
+    return (
+        candidate == "trending"
+        and direction in {"up", "down"}
+        and streak >= 2
+    )
+
+
 def build_conditional_plan_from_intent(
     intent: ExecutionIntent, snap: MarketSnapshot
 ) -> ConditionalPlan:
@@ -189,7 +205,18 @@ def build_conditional_plan_from_intent(
         # 设计含义：
         # - 0.35 ATR：足够近 -> 直接打
         # - 1.5 ATR：还算近 -> 挂单等
+        rolling_ready = _rolling_confirmed(snap)
         if abs(current - entry_price) <= 1.5 * atr:
+            if not rolling_ready:
+                return ConditionalPlan(
+                    execution_mode="WATCH_ONLY",
+                    direction=intent.direction,
+                    entry_price=None,
+                    valid_until_utc=None,
+                    cancel_if=_cancel_rules(None),
+                    explain="Waiting for rolling confirmation before placing limit",
+                )
+
             valid_until = now_plus_hours(intent.ttl_hours)
             return ConditionalPlan(
                 execution_mode="PLACE_LIMIT_4H",

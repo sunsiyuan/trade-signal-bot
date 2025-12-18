@@ -91,7 +91,9 @@ class HyperliquidDataClient:
     # ------------------------------------------------------------
     # A) OHLCV 获取 + 清洗：只保留已收盘K线
     # ------------------------------------------------------------
-    def _fetch_ohlcv(self, timeframe: str, limit: int) -> pd.DataFrame:
+    def _fetch_ohlcv(
+        self, timeframe: str, limit: int, *, drop_incomplete: bool = True
+    ) -> pd.DataFrame:
         """
         从交易所拉 OHLCV，并转成 DataFrame。
         关键点：
@@ -111,7 +113,9 @@ class HyperliquidDataClient:
         df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
         df.sort_values("timestamp", inplace=True)
         df.reset_index(drop=True, inplace=True)
-        return self._drop_incomplete_last_candle(df, timeframe)
+        if drop_incomplete:
+            return self._drop_incomplete_last_candle(df, timeframe)
+        return df
 
     def _drop_incomplete_last_candle(
         self, df: pd.DataFrame, timeframe: str
@@ -385,10 +389,12 @@ class HyperliquidDataClient:
         输出 dict 用固定 key："4h","1h","15m"（和 Settings.tf_* 对齐）。
         """
         s = self.settings
+        raw_15m = self._fetch_ohlcv(s.tf_15m, s.candles_15m, drop_incomplete=False)
         return {
             "4h": self._fetch_ohlcv(s.tf_4h, s.candles_4h),
             "1h": self._fetch_ohlcv(s.tf_1h, s.candles_1h),
-            "15m": self._fetch_ohlcv(s.tf_15m, s.candles_15m),
+            "15m": self._drop_incomplete_last_candle(raw_15m.copy(), s.tf_15m),
+            "15m_raw": raw_15m,
         }
 
     # ------------------------------------------------------------
@@ -773,6 +779,62 @@ class HyperliquidDataClient:
             post_spike_small_body_count=post_spike_small_body_count,
         )
 
+    def _compute_rolling_candidate(
+        self, close_15m: pd.Series
+    ) -> tuple[Optional[str], Optional[str], Optional[float], Optional[float]]:
+        """
+        用 15m close 序列计算 rolling regime candidate：
+        - 使用最近 4h（16 根 15m）数据
+        - 允许包含未收盘的 K 线（不 drop forming bar）
+        - 判定规则：MA25 斜率 + MACD hist 共振
+        """
+
+        if close_15m is None or len(close_15m) == 0:
+            return None, None, None, None
+
+        window = close_15m.tail(16)
+        if len(window) == 0:
+            return None, None, None, None
+
+        ma25_series = ema(window, 25)
+
+        slope_lookback = int(getattr(self.settings, "regime", {}).get("slope_lookback", 5))
+        if len(ma25_series) > 1:
+            base_idx = max(len(ma25_series) - slope_lookback - 1, 0)
+            base_val = ma25_series.iloc[base_idx]
+            slope = (ma25_series.iloc[-1] - base_val) / max(abs(base_val), 1e-9)
+        else:
+            slope = 0.0
+
+        _, _, macd_hist = macd(
+            window,
+            fast=self.settings.macd_fast,
+            slow=self.settings.macd_slow,
+            signal=self.settings.macd_signal,
+        )
+        macd_hist_value = float(macd_hist.iloc[-1]) if len(macd_hist) else None
+
+        trend_ma_angle_min = float(
+            getattr(self.settings, "regime", {}).get("trend_ma_angle_min", 0.0008)
+        )
+
+        candidate: Optional[str]
+        direction: Optional[str]
+        if macd_hist_value is None:
+            candidate = None
+            direction = None
+        elif slope > trend_ma_angle_min and macd_hist_value > 0:
+            candidate = "trending"
+            direction = "up"
+        elif slope < -trend_ma_angle_min and macd_hist_value < 0:
+            candidate = "trending"
+            direction = "down"
+        else:
+            candidate = 'ranging'
+            direction = None
+
+        return candidate, direction, slope, macd_hist_value
+
     # ------------------------------------------------------------
     # D') 统一输出 MarketSnapshot：给策略层的唯一入口
     # ------------------------------------------------------------
@@ -804,6 +866,15 @@ class HyperliquidDataClient:
         # rsidev：价格相对 MA25 的偏离度（(close - ma25)/ma25），可作为震荡/趋势强度辅助特征
         rsidev = (tf1.close - tf1.ma25) / max(tf1.ma25, 1e-6)
 
+        rolling_source = ohlcvs.get("15m_raw") if isinstance(ohlcvs, dict) else None
+        rolling_close = None
+        if isinstance(rolling_source, pd.DataFrame) and "close" in rolling_source:
+            rolling_close = rolling_source["close"]
+        else:
+            rolling_close = ohlcvs["15m"]["close"]
+
+        rolling_candidate, rolling_dir, _, _ = self._compute_rolling_candidate(rolling_close)
+
         return MarketSnapshot(
             symbol=self.settings.symbol,
             ts=ts,
@@ -815,6 +886,10 @@ class HyperliquidDataClient:
             # cross features
             atrrel=atrrel,
             rsidev=rsidev,
+
+            rolling_candidate=rolling_candidate,
+            rolling_candidate_dir=rolling_dir,
+            rolling_candidate_streak=1 if rolling_candidate else 0,
 
             # convenience fields（策略层常用）
             rsi_15m=tf15.rsi6,

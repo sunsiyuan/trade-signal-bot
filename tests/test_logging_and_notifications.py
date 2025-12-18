@@ -2,7 +2,7 @@ import json
 from datetime import datetime, timedelta, timezone
 
 from bot.config import Settings
-from bot.logging_schema import build_signal_event
+from bot.logging_schema import SCHEMA_VERSION, build_signal_event
 from bot.main import (
     format_conditional_plan_line,
     format_summary_line,
@@ -90,7 +90,7 @@ def test_build_signal_event_serializes():
     signal = _make_signal(snapshot)
     event = build_signal_event(snapshot, signal, Settings(), exchange_id="test")
 
-    assert event["schema_version"] == "2.2"
+    assert event["schema_version"] == SCHEMA_VERSION
     assert event["signal"]["thresholds_snapshot"]
     assert event["market"]["price"] == snapshot.deriv.mark_price
     assert event["derivatives"]["mark_price"] == snapshot.deriv.mark_price
