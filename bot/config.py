@@ -278,7 +278,7 @@ class Settings:
             "core_position_pct": 0.5,
             "add_position_pct": 0.25,
             "require_oi": True,
-            "allow_oi_missing_fallback": False,
+            "allow_oi_missing_fallback": True,
             "fallback_confidence": 0.65,
             "fallback_core_position_mult": 0.5,
             "fallback_add_position_mult": 0.5,

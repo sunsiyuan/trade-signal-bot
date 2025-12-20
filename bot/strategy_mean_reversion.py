@@ -185,6 +185,7 @@ def build_mean_reversion_signal(
         "long_oi": round(long_oi_score, 4),
         "short_oi": round(short_oi_score, 4),
         "fallback_mode": 1.0 if fallback_mode else 0.0,
+        "oi_fallback": 1.0 if fallback_mode else 0.0,
     }
 
     rejected_reasons = ["oi_missing_fallback"] if fallback_mode else []
@@ -200,15 +201,16 @@ def build_mean_reversion_signal(
         entry = ma25 - atr_dev_mult * atr
         sl = entry - 1 * atr - sl_buffer_mult * atr
 
-        # 止盈：先看回归 MA25，再看略高于 MA25 半个 ATR
-        # 这是典型“回归均线”的 TP 设计
-        tp1 = ma25
-        tp2 = ma25 + 0.5 * atr
-
         # rr（风险回报比）估算：到 tp1 的收益 / 到 sl 的风险
         risk = abs(entry - sl)
+
+        # 止盈：先看回归 MA25，再看按风险倍率延伸
+        tp1 = ma25
+        tp2 = entry + tp_to_sl_ratio * risk
         reward = abs(tp1 - entry)
         rr = reward / max(risk, 1e-9)
+        debug_scores["rr_used"] = round(rr, 4)
+        debug_scores["tp_to_sl_ratio"] = tp_to_sl_ratio
 
         # trade_confidence：基础 0.6，然后按 rr 增加一些，封顶 0.9
         # 注意：rr 越大（离均线越远 or sl 越近）→ confidence 越高
@@ -276,21 +278,23 @@ def build_mean_reversion_signal(
         entry = ma25 + atr_dev_mult * atr
         sl = entry + 1 * atr + sl_buffer_mult * atr
 
-        # 止盈：先回归 MA25，再略低于 MA25 半个 ATR
-        tp1 = ma25
-        tp2 = ma25 - 0.5 * atr
-
         # rr 估算（到 tp1 的收益 / 到 sl 的风险）
         risk = abs(entry - sl)
+
+        # 止盈：先回归 MA25，再按风险倍率延伸
+        tp1 = ma25
+        tp2 = entry - tp_to_sl_ratio * risk
         reward = abs(tp1 - entry)
         rr = reward / max(risk, 1e-9)
+        debug_scores["rr_used"] = round(rr, 4)
+        debug_scores["tp_to_sl_ratio"] = tp_to_sl_ratio
 
         # confidence 同 long：基础 0.6 + 0.1*rr，封顶 0.9
         trade_confidence = min(0.9, 0.6 + 0.1 * rr)
 
         # OI 缺失 fallback 降权与缩仓
         if fallback_mode:
-            confidence *= fallback_confidence_mult
+            trade_confidence *= fallback_confidence_mult
             core_pct *= fallback_core_position_mult
             add_pct *= fallback_add_position_mult
 

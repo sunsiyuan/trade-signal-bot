@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import math
 from typing import Optional
 
 from .models import ConditionalPlan, ExecutionIntent, MarketSnapshot
@@ -30,7 +31,9 @@ def now_plus_hours(hours: int) -> str:
     return (datetime.now(timezone.utc) + timedelta(hours=hours)).isoformat()
 
 
-def resolve_atr_4h(snapshot: MarketSnapshot) -> Optional[float]:
+def _resolve_atr_4h(
+    snapshot: MarketSnapshot, scale_mode: str = "linear"
+) -> tuple[Optional[float], Optional[str]]:
     """
     为策略/计划提供一个“4小时尺度 ATR”的估计值。
 
@@ -49,12 +52,23 @@ def resolve_atr_4h(snapshot: MarketSnapshot) -> Optional[float]:
       但这里你用的是“工程近似”：只为了给“距离阈值”一个粗尺度。
     """
     if snapshot.tf_4h and snapshot.tf_4h.atr:
-        return snapshot.tf_4h.atr
+        return snapshot.tf_4h.atr, "tf_4h"
+
+    def _scale(value: float, linear_factor: float) -> float:
+        if scale_mode == "sqrt":
+            return value * math.sqrt(linear_factor)
+        return value * linear_factor
+
     if snapshot.tf_1h and snapshot.tf_1h.atr:
-        return snapshot.tf_1h.atr * 2.0
+        return _scale(snapshot.tf_1h.atr, 2.0), "tf_1h_scaled"
     if snapshot.tf_15m and snapshot.tf_15m.atr:
-        return snapshot.tf_15m.atr * 4.0
-    return None
+        return _scale(snapshot.tf_15m.atr, 4.0), "tf_15m_scaled"
+    return None, None
+
+
+def resolve_atr_4h(snapshot: MarketSnapshot, scale_mode: str = "linear") -> Optional[float]:
+    atr, _source = _resolve_atr_4h(snapshot, scale_mode=scale_mode)
+    return atr
 
 
 def _cancel_rules(valid_until: Optional[str]) -> dict:
@@ -117,6 +131,17 @@ def build_conditional_plan_from_intent(
 
     # --- 0) 方向为 none：直接返回 WATCH_ONLY ---
     # 说明策略层当前没有任何执行意图（无论 edge/trade_conf 怎么样）
+    scale_mode = (intent.debug or {}).get("atr_scale_mode", "linear")
+    atr_from_snapshot, atr_source = _resolve_atr_4h(snap, scale_mode=scale_mode)
+    atr = intent.atr_4h if intent.atr_4h is not None else atr_from_snapshot
+    if atr_source is None and atr is not None:
+        atr_source = "intent"
+    plan_debug = {
+        "atr_source": atr_source,
+        "atr_scale_mode": scale_mode,
+        "atr_value": atr,
+    }
+
     if intent.direction == "none":
         return ConditionalPlan(
             execution_mode="WATCH_ONLY",
@@ -125,6 +150,7 @@ def build_conditional_plan_from_intent(
             valid_until_utc=None,
             cancel_if=_cancel_rules(None),
             explain="No execution intent",
+            debug=plan_debug,
         )
 
     # --- 1) 当前价 current 的选择 ---
@@ -136,7 +162,6 @@ def build_conditional_plan_from_intent(
     current = getattr(snap, "price_last", None) or getattr(snap.tf_15m, "close", None)
 
     # ATR 与 entry_price 从 intent 直接取（说明：策略层需要负责给足这些值）
-    atr = intent.atr_4h
     entry_price = intent.entry_price
 
     def _direction_allows_entry(current_price: float, ideal_entry: float) -> bool:
@@ -182,6 +207,7 @@ def build_conditional_plan_from_intent(
             valid_until_utc=None,
             cancel_if=_cancel_rules(None),
             explain="Entry reached, execute now",
+            debug=plan_debug,
         )
 
     # --- 3) PLACE_LIMIT_4H / WATCH_ONLY 分支（需要 atr + current + entry）---
@@ -198,6 +224,7 @@ def build_conditional_plan_from_intent(
                 valid_until_utc=None,
                 cancel_if=_cancel_rules(None),
                 explain="Entry on wrong side of current price for direction",
+                debug=plan_debug,
             )
 
         # 3.2) 如果离 entry 不远：允许下 4H 限价单
@@ -220,6 +247,7 @@ def build_conditional_plan_from_intent(
                     valid_until_utc=None,
                     cancel_if=_cancel_rules(None),
                     explain="Waiting for rolling confirmation (trending) before placing limit",
+                    debug=plan_debug,
                 )
 
             valid_until = now_plus_hours(intent.ttl_hours)
@@ -230,6 +258,7 @@ def build_conditional_plan_from_intent(
                 valid_until_utc=valid_until,
                 cancel_if=_cancel_rules(valid_until),
                 explain="Place 4h limit order at ideal entry",
+                debug=plan_debug,
             )
 
     # --- 4) 兜底：太远/缺数据 -> WATCH_ONLY ---
@@ -245,6 +274,7 @@ def build_conditional_plan_from_intent(
         valid_until_utc=None,
         cancel_if=_cancel_rules(None),
         explain="Too far from entry, watch only",
+        debug=plan_debug,
     )
 
 

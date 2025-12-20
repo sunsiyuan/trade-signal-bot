@@ -57,6 +57,7 @@ class ConditionalPlan:
     valid_until_utc: Optional[str]       # 条件单/计划失效时间
     cancel_if: Dict[str, bool]            # 失效条件（如结构破坏、regime 变化）
     explain: str                          # 给人的一句话解释
+    debug: Optional[Dict] = None
 
 
 # ============================================================
