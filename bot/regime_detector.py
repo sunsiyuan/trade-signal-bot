@@ -96,6 +96,8 @@ def detect_regime(snap: MarketSnapshot, settings) -> RegimeSignal:
     # 弱趋势降级阈值：MA 斜率过小或振荡次数过少，认为趋势不足（默认 0.001 / 1）
     min_trend_ma_angle = _get_nested(settings, "regime", "min_trend_ma_angle", 0.001)
     max_trend_osc = _get_nested(settings, "regime", "max_trend_osc", 1)
+    # weak_trend_osc_ge：震荡次数方向性开关（A/B 验证用，默认保持旧逻辑）
+    weak_trend_osc_ge = _get_nested(settings, "regime", "weak_trend_osc_ge", False)
 
     # ATR 相对波动阈值：>= 0.015 认为“高波动震荡”
     high_vol_atr_rel = _get_nested(settings, "regime", "high_vol_atr_rel", 0.015)
@@ -218,7 +220,12 @@ def detect_regime(snap: MarketSnapshot, settings) -> RegimeSignal:
     # =========================
     # 8.5) 弱趋势降级：trending 但趋势强度不足 → high_vol_ranging
     # =========================
-    weak_trend = (abs(ma_angle) < min_trend_ma_angle) or (osc_count <= max_trend_osc)
+    # osc_count 方向性可切换：默认 <=，开启时用 >=（便于 A/B 验证）
+    if weak_trend_osc_ge:
+        osc_is_weak = osc_count >= max_trend_osc
+    else:
+        osc_is_weak = osc_count <= max_trend_osc
+    weak_trend = (abs(ma_angle) < min_trend_ma_angle) or osc_is_weak
 
     if regime == "trending" and weak_trend:
         regime = "high_vol_ranging"
@@ -238,6 +245,8 @@ def detect_regime(snap: MarketSnapshot, settings) -> RegimeSignal:
 
     if weak_trend_overridden:
         reason += " | weak_trend_override=1"
+    # 记录 A/B 开关状态，便于回放分析
+    reason += f" | weak_trend_osc_ge={1 if weak_trend_osc_ge else 0}"
 
     # =========================
     # 10) 返回 RegimeSignal
