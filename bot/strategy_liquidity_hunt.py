@@ -284,6 +284,8 @@ def build_liquidity_hunt_signal(
         "oi_spike": round(oi_spike_score, 4),
         "oi_flush": round(oi_flush_score, 4),
         "fallback_mode": 1.0 if fallback_mode else 0.0,
+        "oi_fallback": 1.0 if (oi_missing and allow_oi_missing_fallback) else 0.0,
+        "missing_fallback": 1.0 if missing_fallback_mode else 0.0,
     }
 
     rejected_reasons = []

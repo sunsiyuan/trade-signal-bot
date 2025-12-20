@@ -31,7 +31,10 @@ from .strategy_trend_following import (
 
 def _get_price_step(symbol: str, settings: Optional[Settings]) -> Decimal:
     base = symbol.split("/")[0] if symbol else ""
-    mapping = getattr(settings, "price_quantization", {}) if settings else {}
+    if isinstance(settings, dict):
+        mapping = settings.get("price_quantization", {}) or {}
+    else:
+        mapping = getattr(settings, "price_quantization", {}) if settings else {}
     step = mapping.get(base)
     if step is None:
         return Decimal("0.01")
@@ -50,6 +53,8 @@ def _quantize_price(
 
 
 def build_signal_id(signal: TradeSignal, snap: MarketSnapshot, settings: Optional[Settings] = None) -> str:
+    if settings is None:
+        raise ValueError("build_signal_id requires settings to ensure stable price quantization.")
     intent = getattr(signal, "execution_intent", None)
     entry_price = (
         getattr(intent, "entry_price", None)
@@ -227,7 +232,6 @@ class SignalEngine:
                 settings=self.settings,
             )
 
-        signal.signal_id = build_signal_id(signal, snap, self.settings)
         return signal
 
     # =========================
@@ -294,5 +298,16 @@ class SignalEngine:
             else:
                 signal.reason = f"[{regime_label}] {signal.reason}"
 
-        signal.signal_id = build_signal_id(signal, snap)
+        signal_id = build_signal_id(signal, snap, self.settings)
+        signal_id_check = build_signal_id(signal, snap, self.settings)
+        if signal_id != signal_id_check:
+            raise ValueError(
+                f"signal_id is unstable for {snap.symbol}: {signal_id} != {signal_id_check}"
+            )
+        signal.signal_id = signal_id
+        if signal.conditional_plan:
+            plan_debug = dict(getattr(signal.conditional_plan, "debug", None) or {})
+            plan_debug["signal_id"] = signal_id
+            signal.conditional_plan.debug = plan_debug
+            signal.conditional_plan_debug = plan_debug
         return signal

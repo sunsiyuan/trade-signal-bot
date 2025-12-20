@@ -20,11 +20,10 @@ _DEFAULT_PRICE_QUANTIZATION = Settings().price_quantization
 from .data_client import HyperliquidDataClient
 from .logging_schema import build_signal_event, write_jsonl_event
 from .notify import Notifier
-from .signal_engine import SignalEngine
+from .signal_engine import SignalEngine, build_signal_id
 from .state_store import (
     ACTION_TTLS,
     compute_action_hash,
-    compute_signal_id,
     load_global_state,
     load_state,
     mark_sent,
@@ -907,9 +906,8 @@ def main():
         signal = engine.generate_signal(snapshot)
 
         # 给 signal 注入 signal_id（用于 dedupe、状态机、通知关联）
-        signal.signal_id = compute_signal_id(
-            signal, price_quantization=base_settings.price_quantization
-        )
+        if signal.signal_id is None:
+            signal.signal_id = build_signal_id(signal, snapshot, base_settings)
 
         # 结构化日志（stdout + jsonl）
         emit_multi_tf_log(snapshot, signal, symbol_settings, exchange_id=exchange.id)
@@ -996,9 +994,9 @@ def main():
             invalidation_price = getattr(sig, "sl", None)
 
         # signal_id：若 signal 里已有就用，否则现算一个
-        signal_id = getattr(sig, "signal_id", None) or compute_signal_id(
-            sig, price_quantization=base_settings.price_quantization
-        )
+        signal_id = getattr(sig, "signal_id", None)
+        if signal_id is None:
+            signal_id = build_signal_id(sig, snap, base_settings)
 
         # base_plan：写入全局 active_plans 时用，也用于通知消息展示
         base_plan = {
