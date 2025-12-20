@@ -72,6 +72,28 @@ def _plan_dict(plan):
 
 
 # =========================
+# 工具函数：把对象安全序列化为 dict（用于日志追踪）
+# =========================
+def _safe_to_dict(obj):
+    """
+    尝试把对象转换为 dict：
+    - dataclass -> asdict
+    - dict -> 原样返回
+    - 有 __dict__ -> 返回 __dict__
+    - 其他 -> str(obj)
+    """
+    if obj is None:
+        return None
+    if is_dataclass(obj):
+        return asdict(obj)
+    if isinstance(obj, dict):
+        return obj
+    if hasattr(obj, "__dict__"):
+        return obj.__dict__
+    return str(obj)
+
+
+# =========================
 # UI：方向 icon / 中文
 # =========================
 
@@ -786,6 +808,21 @@ def emit_multi_tf_log(snapshot, signal, settings: Settings, exchange_id: str = "
     - 写入 jsonl 文件（默认 data/logs/signals.jsonl，可用 env LOG_JSONL_PATH 覆盖）
     """
     event = build_signal_event(snapshot, signal, settings, exchange_id=exchange_id)
+    # decision_trace：标记信号在各层的状态，便于定位“被哪一层挡住”
+    strategy_selected = getattr(signal, "edge_type", None) or getattr(signal, "setup_type", None)
+    event["decision_trace"] = {
+        "symbol": getattr(snapshot, "symbol", None) or getattr(signal, "symbol", None),
+        "regime": getattr(snapshot, "regime", None),
+        "regime_reason": getattr(snapshot, "regime_reason", None),
+        "strategy_selected": strategy_selected,
+        "direction": getattr(signal, "direction", None),
+        "setup_type": getattr(signal, "setup_type", None),
+        "trade_confidence": getattr(signal, "trade_confidence", None),
+        "edge_confidence": getattr(signal, "edge_confidence", None),
+        "rejected_reasons": getattr(signal, "rejected_reasons", None),
+        "intent": _safe_to_dict(getattr(signal, "execution_intent", None)),
+        "conditional_plan": _safe_to_dict(getattr(signal, "conditional_plan", None)),
+    }
     print(json.dumps(event, ensure_ascii=False))
     log_path = os.getenv("LOG_JSONL_PATH", "data/logs/signals.jsonl")
     write_jsonl_event(event, log_path)

@@ -205,16 +205,21 @@ def build_conditional_plan_from_intent(
         # 设计含义：
         # - 0.35 ATR：足够近 -> 直接打
         # - 1.5 ATR：还算近 -> 挂单等
-        rolling_ready = _rolling_confirmed(snap)
+        # rolling gate 只用于 trending（避免在 ranging 把 MR/LH 的限价挡回 WATCH）
+        regime = getattr(snap, "regime", None)
+        require_rolling = regime == "trending"
+        rolling_ready = True
+        if require_rolling:
+            rolling_ready = _rolling_confirmed(snap)
         if abs(current - entry_price) <= 1.5 * atr:
-            if not rolling_ready:
+            if require_rolling and not rolling_ready:
                 return ConditionalPlan(
                     execution_mode="WATCH_ONLY",
                     direction=intent.direction,
                     entry_price=None,
                     valid_until_utc=None,
                     cancel_if=_cancel_rules(None),
-                    explain="Waiting for rolling confirmation before placing limit",
+                    explain="Waiting for rolling confirmation (trending) before placing limit",
                 )
 
             valid_until = now_plus_hours(intent.ttl_hours)

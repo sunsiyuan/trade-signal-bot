@@ -5,7 +5,7 @@ Trend-following strategy extracted from the signal engine.
 - 这个文件实现“趋势跟随策略”的完整决策链：
   1) _score_direction：用多周期 + 流动性 + funding 等给 long/short 打分
   2) high_conf gate：在极端条件下做软加权（更敢出手 / 更保守）
-  3) 触发价 trigger：不是立刻下单，而是等价格穿过一个 ATR 偏移触发价
+  3) 回撤挂单价：用 ATR 偏移生成更好价的限价入场
   4) 计算 SL/TP：用 swing 均线结构 + ATR buffer 做动态止损止盈
   5) 输出 TradeSignal：要么 none（观望/等待确认），要么 long/short 的执行计划
 """
@@ -303,17 +303,17 @@ def _high_conf_long(snap: MarketSnapshot, settings: Any) -> bool:
 
 
 # =========================
-# 触发价：用 ATR 偏移，等“确认”
+# 回撤挂单价：用 ATR 偏移，给更好的限价入场
 # =========================
-def _compute_trigger(entry: float, atr: float, direction: Direction) -> float:
+def _compute_pullback_entry(spot_price: float, atr: float, direction: Direction) -> float:
     """
-    trigger 逻辑：
-    - short：要求价格从当前 close 往下走至少 0.3*ATR 再触发（避免提前进）
-    - long：要求价格从当前 close 往上走至少 0.3*ATR 再触发
+    pullback entry 逻辑（用于挂更优价格，兼容 ConditionalPlan 的“更好价”校验）：
+    - long：在当前价下方 0.3*ATR 挂单
+    - short：在当前价上方 0.3*ATR 挂单
     """
     if direction == "short":
-        return entry - 0.3 * atr
-    return entry + 0.3 * atr
+        return spot_price + 0.3 * atr
+    return spot_price - 0.3 * atr
 
 
 # =========================
@@ -404,7 +404,7 @@ def build_trend_following_signal(
     thresholds = {
         "min_confidence": min_confidence,
         "regime_trade_min": 0.8,   # 非 trending 时的出手门槛（见后面逻辑）
-        "trigger_atr_mult": 0.3,
+        "pullback_atr_mult": 0.3,
     }
 
     regime = regime_signal.regime
@@ -487,36 +487,13 @@ def build_trend_following_signal(
         signal.edge_type = "趋势清晰"
         return _attach_intent(signal)
 
-    # 6) 计算触发价 trigger（用 15m ATR）
+    # 6) 计算回撤挂单 entry（用 15m ATR），避免“当前价触发判断自相矛盾”
     tf15 = snap.tf_15m
     atr = max(tf15.atr, 1e-6)
     spot_price = tf15.close
-    trigger = _compute_trigger(spot_price, atr, bias)
+    entry = _compute_pullback_entry(spot_price, atr, bias)
 
-    # 7) 如果价格还没触发，则输出 “等待确认价” 的 none 信号（很关键）
-    price_crossed = (spot_price <= trigger) if bias == "short" else (spot_price >= trigger)
-    if not price_crossed:
-        from .signal_engine import TradeSignal
-
-        trade_conf = round(confidence, 2)
-        signal = TradeSignal(
-            symbol=snap.symbol,
-            direction="none",
-            trade_confidence=trade_conf,
-            edge_confidence=round(trend_bias_conf, 2),
-            setup_type="none",
-            reason=(f"信号待确认：等待价格触发 {trigger:.2f} 以执行 {bias} 入场"),
-            entry=trigger,  # 注意：这里的 entry 实际是 trigger（等待价）
-            snapshot=snap,
-            debug_scores={**scores, "trend_bias_conf": round(trend_bias_conf, 4)},
-            rejected_reasons=["price_not_triggered"],
-            thresholds_snapshot=thresholds,
-        )
-        signal.edge_type = "趋势清晰"
-        return _attach_intent(signal)
-
-    # 8) 已触发：进入“下单计划”构建
-    entry = trigger
+    # 7) 进入“下单计划”构建（回撤挂单）
     sl = _compute_swing_sl(snap, atr, bias)
 
     # R = 风险距离（entry 到 SL 的距离）
@@ -547,7 +524,7 @@ def build_trend_following_signal(
         trade_confidence=trade_conf,
         setup_type="trend_short" if bias == "short" else "trend_long",
         reason=(
-            f"{regime} 模式下触发确认价，按 R 结构下单，TP/SL 动态；"
+            "趋势跟随：回撤挂单入场（pullback limit），按 R 结构下单，TP/SL 动态；"
             f"score long={long_score:.2f} / short={short_score:.2f}"
         ),
         entry=entry,
@@ -561,7 +538,7 @@ def build_trend_following_signal(
         debug_scores={
             **scores,
             "regime": regime,
-            "trigger": trigger,
+            "pullback_entry": entry,
             "R": R,
             "high_conf": high_conf,
             "gate_tag": gate_tag,
@@ -579,13 +556,14 @@ def build_execution_intent_tf(
     regime_signal: RegimeSignal,
     signal: "TradeSignal",
 ) -> ExecutionIntent:
-    trigger = signal.entry
+    # 使用回撤挂单 entry，避免误导为“触发价”
+    entry = signal.entry
 
     return ExecutionIntent(
         symbol=snap.symbol,
         direction=signal.direction,
-        entry_price=trigger,
-        entry_reason="TF_trigger",
+        entry_price=entry,
+        entry_reason="TF_pullback",
         invalidation_price=signal.sl,
         atr_4h=resolve_atr_4h(snap),
         ttl_hours=4,

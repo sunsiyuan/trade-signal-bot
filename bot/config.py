@@ -198,6 +198,8 @@ class Settings:
             "ranging_rsi_band": 12,
             "slope_lookback": 5,
             "max_trend_osc": 1,
+            # osc_count 方向性开关（A/B 用）：默认 True 启用新逻辑
+            "weak_trend_osc_ge": True,
         }
     )
 
