@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import argparse
 
-from ..config import Settings
-from .data_store import JSONLDataStore
-from .simulator import run_backtest
+from .runner import run_backtest
 
 
 def main() -> None:
@@ -23,15 +21,11 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    settings = Settings(symbol=args.symbol)
-    data_store = JSONLDataStore(base_dir=args.data_dir)
-
     run_backtest(
         symbol=args.symbol,
-        data_store=data_store,
+        data_dir=args.data_dir,
         output_dir=args.output_dir,
         mode=args.mode,
-        settings=settings,
         start=args.start,
         end=args.end,
     )
