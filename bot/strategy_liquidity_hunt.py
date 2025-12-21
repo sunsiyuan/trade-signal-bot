@@ -100,12 +100,20 @@ def _lh_missing_fields(snap: MarketSnapshot, tf) -> list:
         return missing
 
     # 墙的 size
-    if not hasattr(deriv, "ask_wall_size") or not hasattr(deriv, "bid_wall_size"):
+    if (
+        not hasattr(deriv, "ask_wall_size")
+        or not hasattr(deriv, "bid_wall_size")
+        or getattr(deriv, "ask_wall_size") is None
+        or getattr(deriv, "bid_wall_size") is None
+    ):
         missing.append("deriv.ask_wall_size/bid_wall_size")
 
     # 墙的 boolean 判断（是否大墙）
-    if not hasattr(deriv, "has_large_ask_wall") or not hasattr(
-        deriv, "has_large_bid_wall"
+    if (
+        not hasattr(deriv, "has_large_ask_wall")
+        or not hasattr(deriv, "has_large_bid_wall")
+        or getattr(deriv, "has_large_ask_wall") is None
+        or getattr(deriv, "has_large_bid_wall") is None
     ):
         missing.append("deriv.has_large_*_wall")
 

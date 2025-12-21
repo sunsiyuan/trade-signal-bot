@@ -145,11 +145,11 @@ class DerivativeIndicators:
     liquidity_comment: str = ""
 
     # 派生的盘口摘要
-    ask_wall_size: float = 0.0
-    bid_wall_size: float = 0.0
+    ask_wall_size: Optional[float] = 0.0
+    bid_wall_size: Optional[float] = 0.0
     ask_to_bid_ratio: Optional[float] = None
-    has_large_ask_wall: bool = False
-    has_large_bid_wall: bool = False
+    has_large_ask_wall: Optional[bool] = False
+    has_large_bid_wall: Optional[bool] = False
 
 
 # ============================================================
@@ -189,6 +189,9 @@ class MarketSnapshot:
     # --- 盘口汇总 ---
     asks: float = 0.0
     bids: float = 0.0
+
+    # --- 数据覆盖标记（用于回测缺失降级） ---
+    data_flags: Optional[Dict[str, bool]] = None
 
     def get_timeframe(self, tf: str) -> TimeframeIndicators:
         """
