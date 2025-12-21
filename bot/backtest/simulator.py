@@ -10,6 +10,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 
 from ..config import Settings
+from ..execution.gating import DedupStore, PositionStore, apply_gate, Position as GatePosition
 from ..models import ConditionalPlan, ExecutionIntent
 from ..signal_engine import SignalEngine
 from .data_store import JSONLDataStore
@@ -50,6 +51,12 @@ def _to_ms(dt: datetime) -> int:
     return int(dt.timestamp() * 1000)
 
 
+def _scope_key(settings: Settings, exchange_id: str, symbol: str, direction: str) -> str:
+    if settings.GATE_SCOPE == "symbol":
+        return f"{exchange_id}|{symbol}"
+    return f"{exchange_id}|{symbol}|{direction}"
+
+
 def _resample_from_15m(df_15m: pd.DataFrame, timeframe: str) -> pd.DataFrame:
     if df_15m.empty:
         return df_15m
@@ -86,6 +93,11 @@ def run_backtest(
 ) -> BacktestResult:
     settings = settings or Settings()
     signal_engine = SignalEngine(settings=settings)
+
+    os.makedirs(output_dir, exist_ok=True)
+    gate_db_path = os.path.join(output_dir, "gating.sqlite")
+    dedup_store = DedupStore(gate_db_path)
+    position_store = PositionStore(gate_db_path)
 
     df_15m = data_store.load_candles(symbol, "15m")
     df_1h = data_store.load_candles(symbol, "1h")
@@ -136,45 +148,59 @@ def run_backtest(
         signal_id = signal.signal_id or ""
         valid_until_ms = _signal_valid_until_ms(snapshot.ts, intent)
 
-        duplicate_reason = None
-        first_exec_ts = None
-
-        if signal_id in state.executed_signal_ids:
-            first_exec_ts = state.executed_signal_ids[signal_id]
-            ttl_ms = max(valid_until_ms - _to_ms(snapshot.ts), 0)
-            if _to_ms(snapshot.ts) <= first_exec_ts + ttl_ms:
-                duplicate_reason = "signal_already_executed"
-        if signal_id in state.open_orders_by_signal_id:
-            duplicate_reason = duplicate_reason or "order_already_open"
-        if signal_id in state.closed_signal_ids:
-            duplicate_reason = duplicate_reason or "signal_already_completed"
-
-        if duplicate_reason:
-            trades.append(
-                TradeRecord(
-                    trade_id=f"skip-{signal_id}-{_to_ms(snapshot.ts)}",
-                    symbol=symbol,
-                    signal_id=signal_id,
-                    plan_type=plan_type,
-                    direction=signal.direction,
-                    setup_type=signal.setup_type,
-                    order_created_ts=None,
-                    filled_ts=None,
-                    filled_price=None,
-                    expired=False,
-                    exit_ts=None,
-                    exit_price=None,
-                    exit_reason=None,
-                    pnl_abs=None,
-                    pnl_pct=None,
-                    decision_trace=signal.conditional_plan_debug,
-                    data_coverage=data_flags,
-                    duplicate_skipped=True,
-                    duplicate_reason=duplicate_reason,
-                    first_exec_ts=first_exec_ts,
-                )
+        gate_decision = None
+        should_gate = plan_type == "EXECUTE_NOW" or (
+            plan_type == "PLACE_LIMIT_4H" and mode in {"execute_now_and_limit4h"}
+        )
+        if should_gate:
+            _, _, gate_decision = apply_gate(
+                signal=signal,
+                plan_type=plan_type,
+                settings=settings,
+                dedup_store=dedup_store,
+                position_store=position_store,
+                exchange_id="backtest",
+                now_ts=snapshot.ts,
             )
-            continue
+
+            if gate_decision.decision in {
+                "SKIP_DUP",
+                "SKIP_COOLDOWN",
+                "SKIP_IN_POSITION",
+            }:
+                trades.append(
+                    TradeRecord(
+                        trade_id=f"skip-{signal_id}-{_to_ms(snapshot.ts)}",
+                        symbol=symbol,
+                        signal_id=signal_id,
+                        plan_type=plan_type,
+                        direction=signal.direction,
+                        setup_type=signal.setup_type,
+                        order_created_ts=None,
+                        filled_ts=None,
+                        filled_price=None,
+                        expired=False,
+                        exit_ts=None,
+                        exit_price=None,
+                        exit_reason=None,
+                        pnl_abs=None,
+                        pnl_pct=None,
+                        decision_trace=signal.conditional_plan_debug,
+                        data_coverage=data_flags,
+                        duplicate_skipped=gate_decision.decision == "SKIP_DUP",
+                        duplicate_reason=gate_decision.reason
+                        if gate_decision.decision == "SKIP_DUP"
+                        else None,
+                        cooldown_skipped=gate_decision.decision == "SKIP_COOLDOWN",
+                        cooldown_remaining_sec=gate_decision.cooldown_remaining_sec,
+                        in_position=gate_decision.in_position,
+                        forced_close=gate_decision.forced_close,
+                        gate_decision=gate_decision.decision,
+                        scope_key=gate_decision.scope_key,
+                        dedup_key=gate_decision.dedup_key,
+                    )
+                )
+                continue
 
         if plan_type == "EXECUTE_NOW":
             if idx + 1 >= len(df_15m):
@@ -182,6 +208,38 @@ def run_backtest(
             next_candle = df_15m.iloc[idx + 1]
             entry_price = float(next_candle["open"])
             entry_ts = _to_ms(next_candle["timestamp"].to_pydatetime())
+
+            if gate_decision and gate_decision.decision == "CLOSE_THEN_EXEC":
+                close_ts = entry_ts
+                scope_key = gate_decision.scope_key or _scope_key(
+                    settings, "backtest", symbol, signal.direction
+                )
+                position_info = position_store.get_open_position(scope_key)
+                if position_info:
+                    open_position = state.open_positions.get(position_info.position_id)
+                    if open_position:
+                        exit_price = float(next_candle["open"])
+                        exit_ts = close_ts
+                        pnl_abs, pnl_pct = _pnl(
+                            open_position.entry_price, exit_price, open_position.direction
+                        )
+                        open_position.status = "closed"
+                        open_position.exit_ts = exit_ts
+                        open_position.exit_price = exit_price
+                        open_position.exit_reason = "manual"
+                        _update_trade_record(
+                            trades,
+                            open_position.trade_id,
+                            exit_ts=exit_ts,
+                            exit_price=exit_price,
+                            exit_reason="manual",
+                            pnl_abs=pnl_abs,
+                            pnl_pct=pnl_pct,
+                        )
+                        del state.open_positions[open_position.trade_id]
+                    if settings.GATE_ENABLE:
+                        position_store.clear_open_position(scope_key)
+                entry_ts = close_ts + settings.GATE_MIN_TIME_BETWEEN_CLOSE_AND_OPEN_MS
 
             trade_id = str(uuid.uuid4())
             position = Position(
@@ -195,7 +253,23 @@ def run_backtest(
                 tp=signal.tp1,
             )
             state.open_positions[trade_id] = position
-            state.executed_signal_ids[signal_id] = entry_ts
+            scope_key = (
+                gate_decision.scope_key
+                if gate_decision and gate_decision.scope_key
+                else _scope_key(settings, "backtest", symbol, signal.direction)
+            )
+            if settings.GATE_ENABLE:
+                position_store.set_open_position(
+                    scope_key,
+                    position=GatePosition(
+                        position_id=trade_id,
+                        open_ts=entry_ts / 1000,
+                        direction=signal.direction,
+                        size=1.0,
+                        entry_price=entry_price,
+                    ),
+                )
+                dedup_store.set_last_exec_ts(scope_key, entry_ts / 1000)
 
             trades.append(
                 TradeRecord(
@@ -216,6 +290,11 @@ def run_backtest(
                     pnl_pct=None,
                     decision_trace=signal.conditional_plan_debug,
                     data_coverage=data_flags,
+                    in_position=gate_decision.in_position if gate_decision else False,
+                    forced_close=gate_decision.forced_close if gate_decision else False,
+                    gate_decision=gate_decision.decision if gate_decision else None,
+                    scope_key=gate_decision.scope_key if gate_decision else None,
+                    dedup_key=gate_decision.dedup_key if gate_decision else None,
                 )
             )
 
@@ -257,6 +336,11 @@ def run_backtest(
                     pnl_pct=None,
                     decision_trace=signal.conditional_plan_debug,
                     data_coverage=data_flags,
+                    in_position=gate_decision.in_position if gate_decision else False,
+                    forced_close=gate_decision.forced_close if gate_decision else False,
+                    gate_decision=gate_decision.decision if gate_decision else None,
+                    scope_key=gate_decision.scope_key if gate_decision else None,
+                    dedup_key=gate_decision.dedup_key if gate_decision else None,
                 )
             )
 
@@ -303,7 +387,19 @@ def run_backtest(
                     tp=order.tp,
                 )
                 state.open_positions[position.trade_id] = position
-                state.executed_signal_ids[signal_key] = order.filled_ts
+                scope_key = _scope_key(settings, "backtest", order.symbol, order.direction)
+                if settings.GATE_ENABLE:
+                    position_store.set_open_position(
+                        scope_key,
+                        position=GatePosition(
+                            position_id=order.order_id,
+                            open_ts=order.filled_ts / 1000,
+                            direction=order.direction,
+                            size=1.0,
+                            entry_price=order.filled_price or 0.0,
+                        ),
+                    )
+                    dedup_store.set_last_exec_ts(scope_key, order.filled_ts / 1000)
                 del state.open_orders_by_signal_id[signal_key]
                 _update_trade_record(
                     trades,
@@ -357,8 +453,11 @@ def run_backtest(
             )
 
             del state.open_positions[trade_id]
+            if settings.GATE_ENABLE:
+                position_store.clear_open_position(
+                    _scope_key(settings, "backtest", position.symbol, position.direction)
+                )
 
-    os.makedirs(output_dir, exist_ok=True)
     trades_path = os.path.join(output_dir, "trades.jsonl")
     with open(trades_path, "w", encoding="utf-8") as fh:
         for record in trades:

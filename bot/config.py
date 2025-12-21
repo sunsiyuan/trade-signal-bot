@@ -135,6 +135,42 @@ class Settings:
     add_position_pct: float = 0.2
 
     # ============================================================
+    # 2.1) Execution Gating（信号去重 / 冷却 / 仓位闸门）
+    # ============================================================
+
+    # Gate 开关：默认开启（影响执行层，不改变策略信号产出）
+    GATE_ENABLE: bool = True
+
+    # Dedup：同一时间桶内相同内容只执行一次
+    # 默认 15m -> 900s（也可在 signal.tf 存在时覆盖）
+    GATE_DEDUP_WINDOW_SEC: int = 900
+
+    # Cooldown：执行后冷却时间（秒）
+    GATE_COOLDOWN_SEC: int = 3600
+
+    # Gate 作用范围
+    # - "symbol": (exchange, symbol)
+    # - "symbol_direction": (exchange, symbol, direction)
+    GATE_SCOPE: str = "symbol_direction"
+
+    # 是否在新信号执行前强制平仓旧仓位
+    GATE_FORCE_CLOSE_ON_NEW_SIGNAL: bool = True
+
+    # 同方向时是否允许“刷新仓位”（先平再开）
+    GATE_REFRESH_SAME_DIRECTION: bool = False
+
+    # 强制平仓方式
+    GATE_CLOSE_METHOD: str = "market"
+
+    # 平仓与开仓之间最小间隔（毫秒）
+    GATE_MIN_TIME_BETWEEN_CLOSE_AND_OPEN_MS: int = 250
+
+    # Dedup key 模式：
+    # - "signal_id": 直接用 signal_id
+    # - "content_hash": 内容哈希（推荐）
+    GATE_DEDUP_KEY_MODE: str = "content_hash"
+
+    # ============================================================
     # 3) Notification（通知/渠道）：只通过 env 注入，不要写死在代码里
     # ============================================================
 

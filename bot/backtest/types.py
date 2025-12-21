@@ -94,6 +94,13 @@ class TradeRecord:
     duplicate_skipped: bool = False
     duplicate_reason: Optional[str] = None
     first_exec_ts: Optional[int] = None
+    cooldown_skipped: bool = False
+    cooldown_remaining_sec: Optional[float] = None
+    in_position: bool = False
+    forced_close: bool = False
+    gate_decision: Optional[str] = None
+    scope_key: Optional[str] = None
+    dedup_key: Optional[str] = None
 
 
 @dataclass
