@@ -18,6 +18,7 @@ from .config import Settings
 _DEFAULT_PRICE_QUANTIZATION = Settings().price_quantization
 
 from .data_client import HyperliquidDataClient
+from .execution.gating import DedupStore, PositionStore, apply_gate
 from .logging_schema import build_signal_event, write_jsonl_event
 from .notify import Notifier
 from .signal_engine import SignalEngine, build_signal_id
@@ -840,6 +841,9 @@ def main():
     state_path = os.path.join(".state", "state.json")
     state = load_global_state(state_path)
 
+    dedup_store = DedupStore()
+    position_store = PositionStore()
+
     # 每个 symbol 独立的状态（用于 should_send / mark_sent 的去重记忆）
     symbol_states: Dict[str, Dict[str, Any]] = {}
     dirty_symbols: set[str] = set()  # 哪些 symbol 的 state 需要写回磁盘
@@ -1100,6 +1104,27 @@ def main():
             reason = plan.get("explain") or sig.reason or "立即执行"
             symbol_state = _get_symbol_state(sig.symbol)
 
+            gate_decision = None
+            if base_settings.GATE_ENABLE:
+                _, _, gate_decision = apply_gate(
+                    signal=sig,
+                    plan_type="EXECUTE_NOW",
+                    settings=base_settings,
+                    dedup_store=dedup_store,
+                    position_store=position_store,
+                    exchange_id=exchange.id,
+                    now_ts=now,
+                )
+                if gate_decision.decision in {"SKIP_DUP", "SKIP_COOLDOWN", "SKIP_IN_POSITION"}:
+                    _log_dedupe(
+                        {
+                            "allowed": False,
+                            "reason": gate_decision.reason,
+                            "gate_decision": gate_decision.decision,
+                        }
+                    )
+                    continue
+
             action_payload = {**base_plan, "reason": reason}
             action_hash = compute_action_hash(current_action, action_payload)
 
@@ -1149,6 +1174,8 @@ def main():
                     valid_until=None,
                     action_hash=action_hash,
                 )
+                if base_settings.GATE_ENABLE and gate_decision and gate_decision.scope_key:
+                    dedup_store.set_last_exec_ts(gate_decision.scope_key, now.timestamp())
                 dirty_symbols.add(sig.symbol)
 
         # 每个币都输出一行 compact summary（包含 current_action）
