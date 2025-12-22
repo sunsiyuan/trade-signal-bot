@@ -17,19 +17,34 @@ def _max_drawdown(equity_curve: List[float]) -> float:
     return max_dd
 
 
-def summarize_trades(trades: List[TradeRecord], mode: str) -> Dict[str, object]:
-    filled_trades = [t for t in trades if t.filled_ts is not None and t.pnl_abs is not None]
-    wins = [t for t in filled_trades if t.pnl_abs is not None and t.pnl_abs > 0]
+def _rate(numerator: int, denominator: int) -> float:
+    return numerator / max(denominator, 1)
 
-    total_pnl = sum(t.pnl_abs or 0.0 for t in filled_trades)
-    equity_curve = []
+
+def summarize_trades(
+    trades: List[TradeRecord], mode: str, gate_stats: Dict[str, object]
+) -> Dict[str, object]:
+    closed_trades = [t for t in trades if t.pnl_abs is not None]
+    wins = [t for t in closed_trades if t.pnl_abs is not None and t.pnl_abs > 0]
+
+    total_pnl = sum(t.pnl_abs or 0.0 for t in closed_trades)
+    equity_curve: List[float] = []
     running = 0.0
-    for trade in filled_trades:
+    for trade in closed_trades:
         running += trade.pnl_abs or 0.0
         equity_curve.append(running)
 
     max_dd = _max_drawdown(equity_curve)
-    fill_rate = len(filled_trades) / max(len([t for t in trades if not t.duplicate_skipped]), 1)
+    signal_count = int(gate_stats.get("signal_count", 0))
+    execute_decision_count = int(gate_stats.get("execute_decision_count", 0))
+    order_created_count = int(gate_stats.get("order_created_count", 0))
+    filled_count = int(gate_stats.get("filled_count", 0))
+    closed_trade_count = int(gate_stats.get("closed_trade_count", 0))
+    signal_to_execute_rate = _rate(execute_decision_count, signal_count)
+    execute_to_order_rate = _rate(order_created_count, execute_decision_count)
+    order_fill_rate = _rate(filled_count, order_created_count)
+    signal_fill_rate = _rate(filled_count, signal_count)
+    closed_trade_rate = _rate(closed_trade_count, filled_count)
 
     time_to_fill = []
     for trade in trades:
@@ -49,12 +64,33 @@ def summarize_trades(trades: List[TradeRecord], mode: str) -> Dict[str, object]:
     return {
         "mode": mode,
         "metrics": {
-            "trade_count": len(filled_trades),
-            "win_rate": len(wins) / max(len(filled_trades), 1),
+            "trade_count": closed_trade_count,
+            "win_rate": _rate(len(wins), closed_trade_count),
             "total_pnl": total_pnl,
             "max_drawdown": max_dd,
-            "fill_rate": fill_rate,
+            "fill_rate": order_fill_rate,
             "avg_time_to_fill_sec": avg_time_to_fill,
         },
         "data_coverage": data_coverage,
+        "gate_stats": {
+            "signal_count": signal_count,
+            "decision_count": int(gate_stats.get("decision_count", 0)),
+            "execute_decision_count": execute_decision_count,
+            "order_created_count": order_created_count,
+            "filled_count": filled_count,
+            "closed_trade_count": closed_trade_count,
+            "skipped_count": int(gate_stats.get("skipped_count", 0)),
+            "skipped_by_reason": gate_stats.get("skipped_by_reason", {}),
+            "forced_close_count": int(gate_stats.get("forced_close_count", 0)),
+            "cooldown_blocked_count": int(gate_stats.get("cooldown_blocked_count", 0)),
+            "dedup_blocked_count": int(gate_stats.get("dedup_blocked_count", 0)),
+            "in_position_blocked_count": int(gate_stats.get("in_position_blocked_count", 0)),
+            "rates": {
+                "signal_to_execute_rate": signal_to_execute_rate,
+                "execute_to_order_rate": execute_to_order_rate,
+                "order_fill_rate": order_fill_rate,
+                "signal_fill_rate": signal_fill_rate,
+                "closed_trade_rate": closed_trade_rate,
+            },
+        },
     }

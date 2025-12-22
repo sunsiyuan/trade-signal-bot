@@ -125,6 +125,21 @@ def run_backtest(
     state = BacktestExecutionState()
 
     trades: List[TradeRecord] = []
+    gate_stats: Dict[str, object] = {
+        "signal_count": 0,
+        "decision_count": 0,
+        "execute_decision_count": 0,
+        "order_created_count": 0,
+        "filled_count": 0,
+        "closed_trade_count": 0,
+        "skipped_count": 0,
+        "skipped_by_reason": {},
+        "forced_close_count": 0,
+        "cooldown_blocked_count": 0,
+        "dedup_blocked_count": 0,
+        "in_position_blocked_count": 0,
+    }
+    gating_audit: List[Dict[str, object]] = []
 
     for idx in range(len(df_15m)):
         candle = df_15m.iloc[idx]
@@ -141,7 +156,14 @@ def run_backtest(
 
         data_flags = getattr(snapshot, "data_flags", {"has_oi": False, "has_orderbook": False})
 
-        if plan is None or plan.execution_mode == "WATCH_ONLY":
+        gate_stats["signal_count"] = int(gate_stats["signal_count"]) + 1
+
+        if plan is None:
+            continue
+
+        gate_stats["decision_count"] = int(gate_stats["decision_count"]) + 1
+
+        if plan.execution_mode == "WATCH_ONLY":
             continue
 
         plan_type = plan.execution_mode
@@ -149,9 +171,12 @@ def run_backtest(
         valid_until_ms = _signal_valid_until_ms(snapshot.ts, intent)
 
         gate_decision = None
-        should_gate = plan_type == "EXECUTE_NOW" or (
+        execute_capable = plan_type == "EXECUTE_NOW" or (
             plan_type == "PLACE_LIMIT_4H" and mode in {"execute_now_and_limit4h"}
         )
+        if execute_capable:
+            gate_stats["execute_decision_count"] = int(gate_stats["execute_decision_count"]) + 1
+        should_gate = execute_capable
         if should_gate:
             _, _, gate_decision = apply_gate(
                 signal=signal,
@@ -168,39 +193,41 @@ def run_backtest(
                 "SKIP_COOLDOWN",
                 "SKIP_IN_POSITION",
             }:
-                trades.append(
-                    TradeRecord(
-                        trade_id=f"skip-{signal_id}-{_to_ms(snapshot.ts)}",
-                        symbol=symbol,
-                        signal_id=signal_id,
-                        plan_type=plan_type,
-                        direction=signal.direction,
-                        setup_type=signal.setup_type,
-                        order_created_ts=None,
-                        filled_ts=None,
-                        filled_price=None,
-                        expired=False,
-                        exit_ts=None,
-                        exit_price=None,
-                        exit_reason=None,
-                        pnl_abs=None,
-                        pnl_pct=None,
-                        decision_trace=signal.conditional_plan_debug,
-                        data_coverage=data_flags,
-                        duplicate_skipped=gate_decision.decision == "SKIP_DUP",
-                        duplicate_reason=gate_decision.reason
-                        if gate_decision.decision == "SKIP_DUP"
-                        else None,
-                        cooldown_skipped=gate_decision.decision == "SKIP_COOLDOWN",
-                        cooldown_remaining_sec=gate_decision.cooldown_remaining_sec,
-                        in_position=gate_decision.in_position,
-                        forced_close=gate_decision.forced_close,
-                        gate_decision=gate_decision.decision,
-                        scope_key=gate_decision.scope_key,
-                        dedup_key=gate_decision.dedup_key,
+                gate_stats["skipped_count"] = int(gate_stats["skipped_count"]) + 1
+                skipped_by_reason = gate_stats["skipped_by_reason"]
+                skipped_by_reason[gate_decision.decision] = (
+                    skipped_by_reason.get(gate_decision.decision, 0) + 1
+                )
+                if gate_decision.decision == "SKIP_COOLDOWN":
+                    gate_stats["cooldown_blocked_count"] = (
+                        int(gate_stats["cooldown_blocked_count"]) + 1
                     )
+                if gate_decision.decision == "SKIP_DUP":
+                    gate_stats["dedup_blocked_count"] = int(gate_stats["dedup_blocked_count"]) + 1
+                if gate_decision.decision == "SKIP_IN_POSITION":
+                    gate_stats["in_position_blocked_count"] = (
+                        int(gate_stats["in_position_blocked_count"]) + 1
+                    )
+                gating_audit.append(
+                    {
+                        "ts": _to_ms(snapshot.ts),
+                        "symbol": symbol,
+                        "signal_id": signal_id,
+                        "plan_type": plan_type,
+                        "direction": signal.direction,
+                        "setup_type": signal.setup_type,
+                        "gate_decision": gate_decision.decision,
+                        "reason": gate_decision.reason,
+                        "cooldown_remaining_sec": gate_decision.cooldown_remaining_sec,
+                        "scope_key": gate_decision.scope_key,
+                        "dedup_key": gate_decision.dedup_key,
+                        "in_position": gate_decision.in_position,
+                        "forced_close": gate_decision.forced_close,
+                    }
                 )
                 continue
+            if gate_decision.decision == "CLOSE_THEN_EXEC":
+                gate_stats["forced_close_count"] = int(gate_stats["forced_close_count"]) + 1
 
         if plan_type == "EXECUTE_NOW":
             if idx + 1 >= len(df_15m):
@@ -236,11 +263,16 @@ def run_backtest(
                             pnl_abs=pnl_abs,
                             pnl_pct=pnl_pct,
                         )
+                        gate_stats["closed_trade_count"] = (
+                            int(gate_stats["closed_trade_count"]) + 1
+                        )
                         del state.open_positions[open_position.trade_id]
                     if settings.GATE_ENABLE:
                         position_store.clear_open_position(scope_key)
                 entry_ts = close_ts + settings.GATE_MIN_TIME_BETWEEN_CLOSE_AND_OPEN_MS
 
+            gate_stats["order_created_count"] = int(gate_stats["order_created_count"]) + 1
+            gate_stats["filled_count"] = int(gate_stats["filled_count"]) + 1
             trade_id = str(uuid.uuid4())
             position = Position(
                 trade_id=trade_id,
@@ -292,6 +324,9 @@ def run_backtest(
                     data_coverage=data_flags,
                     in_position=gate_decision.in_position if gate_decision else False,
                     forced_close=gate_decision.forced_close if gate_decision else False,
+                    cooldown_remaining_sec=gate_decision.cooldown_remaining_sec
+                    if gate_decision
+                    else 0.0,
                     gate_decision=gate_decision.decision if gate_decision else None,
                     scope_key=gate_decision.scope_key if gate_decision else None,
                     dedup_key=gate_decision.dedup_key if gate_decision else None,
@@ -317,6 +352,7 @@ def run_backtest(
                 data_coverage=data_flags,
             )
             state.open_orders_by_signal_id[signal_id] = order
+            gate_stats["order_created_count"] = int(gate_stats["order_created_count"]) + 1
             trades.append(
                 TradeRecord(
                     trade_id=order_id,
@@ -338,6 +374,9 @@ def run_backtest(
                     data_coverage=data_flags,
                     in_position=gate_decision.in_position if gate_decision else False,
                     forced_close=gate_decision.forced_close if gate_decision else False,
+                    cooldown_remaining_sec=gate_decision.cooldown_remaining_sec
+                    if gate_decision
+                    else 0.0,
                     gate_decision=gate_decision.decision if gate_decision else None,
                     scope_key=gate_decision.scope_key if gate_decision else None,
                     dedup_key=gate_decision.dedup_key if gate_decision else None,
@@ -376,6 +415,7 @@ def run_backtest(
                 order.status = "filled"
                 order.filled_ts = _to_ms(candle_open)
                 order.filled_price = order.entry_price
+                gate_stats["filled_count"] = int(gate_stats["filled_count"]) + 1
                 position = Position(
                     trade_id=order.order_id,
                     signal_id=order.signal_id,
@@ -451,6 +491,7 @@ def run_backtest(
                 pnl_abs=pnl_abs,
                 pnl_pct=pnl_pct,
             )
+            gate_stats["closed_trade_count"] = int(gate_stats["closed_trade_count"]) + 1
 
             del state.open_positions[trade_id]
             if settings.GATE_ENABLE:
@@ -463,7 +504,13 @@ def run_backtest(
         for record in trades:
             fh.write(json.dumps(record.__dict__, ensure_ascii=False) + "\n")
 
-    summary = summarize_trades(trades, mode=mode)
+    if gating_audit:
+        gating_audit_path = os.path.join(output_dir, "gating_audit.jsonl")
+        with open(gating_audit_path, "w", encoding="utf-8") as fh:
+            for record in gating_audit:
+                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    summary = summarize_trades(trades, mode=mode, gate_stats=gate_stats)
     summary_path = os.path.join(output_dir, "summary.json")
     with open(summary_path, "w", encoding="utf-8") as fh:
         json.dump(summary, fh, ensure_ascii=False, indent=2)
