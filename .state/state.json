@@ -18,20 +18,20 @@
       "status": "ACTIVE"
     },
     "BTC/USDC:USDC": {
-      "signal_id": "0acc7f601d18",
+      "signal_id": "b29f53567aa5",
       "symbol": "BTC/USDC:USDC",
       "execution_mode": "PLACE_LIMIT_4H",
       "direction": "short",
-      "setup_type": "mr_short",
-      "entry_price": 89960.16157317662,
-      "invalidation_price": 90715.46157317662,
-      "tp1": 89096.96157317662,
-      "tp2": 89129.33157317662,
+      "setup_type": "lh_short",
+      "entry_price": 90077.0,
+      "invalidation_price": 90734.106,
+      "tp1": 90283.25,
+      "tp2": 90013.5,
       "tp3": null,
-      "sl": 90715.46157317662,
+      "sl": 90734.106,
       "regime": "high_vol_ranging",
-      "valid_until_utc": "2025-12-22T17:30:42.123381+00:00",
-      "created_utc": "2025-12-22T15:31:10.184414+00:00",
+      "valid_until_utc": "2025-12-22T16:35:48.237857+00:00",
+      "created_utc": "2025-12-22T15:36:15.928460+00:00",
       "status": "ACTIVE"
     }
   },
@@ -77,7 +77,8 @@
       "EXECUTE_NOW"
     ],
     "b29f53567aa5": [
-      "EXECUTE_NOW"
+      "EXECUTE_NOW",
+      "CREATED"
     ],
     "0acc7f601d18": [
       "CREATED"
