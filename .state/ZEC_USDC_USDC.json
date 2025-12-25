@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at_utc": "2025-12-25T06:41:13.723448+00:00",
+  "updated_at_utc": "2025-12-25T06:46:12.823738+00:00",
   "signals": {
     "ZEC/USDC:USDC|2a5ab974ae41": {
       "signal_id": "2a5ab974ae41",
@@ -193,12 +193,25 @@
           "hash": "aa84bfc93b7cc026802f8319f86fa78ea1e51d47"
         }
       }
+    },
+    "ZEC/USDC:USDC|2a517059607f": {
+      "signal_id": "2a517059607f",
+      "symbol": "ZEC/USDC:USDC",
+      "created_at_utc": "2025-12-25T06:46:12.066452+00:00",
+      "last_seen_utc": "2025-12-25T06:46:12.066452+00:00",
+      "actions_sent": {
+        "EXECUTE_NOW": {
+          "sent_at_utc": "2025-12-25T06:46:12.066452+00:00",
+          "expires_at_utc": "2025-12-25T07:16:12.066452+00:00",
+          "hash": "ae163887e4719a774b8bd016202256927037e2ec"
+        }
+      }
     }
   },
   "rolling_state": {
     "candidate": "trending",
     "dir": "down",
-    "streak": 6,
-    "last_ts": "2025-12-25T06:41:13.080516+00:00"
+    "streak": 7,
+    "last_ts": "2025-12-25T06:46:12.062760+00:00"
   }
 }
