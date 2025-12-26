@@ -297,6 +297,9 @@
       "EXECUTE_NOW",
       "CREATED",
       "REGIME_CHANGED"
+    ],
+    "30f6126fe630": [
+      "EXECUTE_NOW"
     ]
   }
 }
