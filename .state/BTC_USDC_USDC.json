@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at_utc": "2025-12-27T04:01:15.213791+00:00",
+  "updated_at_utc": "2025-12-27T04:06:14.427091+00:00",
   "signals": {
     "BTC/USDC:USDC|abdd3cdd9ece": {
       "signal_id": "abdd3cdd9ece",
@@ -315,7 +315,7 @@
   "rolling_state": {
     "candidate": "ranging",
     "dir": null,
-    "streak": 43,
-    "last_ts": "2025-12-27T04:00:45.861278+00:00"
+    "streak": 44,
+    "last_ts": "2025-12-27T04:05:46.532418+00:00"
   }
 }
