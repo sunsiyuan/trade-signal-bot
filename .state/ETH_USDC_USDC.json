@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at_utc": "2026-01-03T04:31:13.571185+00:00",
+  "updated_at_utc": "2026-01-03T04:36:13.114903+00:00",
   "signals": {
     "ETH/USDC:USDC|543ba247b632": {
       "signal_id": "543ba247b632",
@@ -349,12 +349,12 @@
       "signal_id": "df2189021d16",
       "symbol": "ETH/USDC:USDC",
       "created_at_utc": "2026-01-03T04:01:31.890811+00:00",
-      "last_seen_utc": "2026-01-03T04:31:12.860447+00:00",
+      "last_seen_utc": "2026-01-03T04:36:12.145770+00:00",
       "actions_sent": {
         "EXECUTE_NOW": {
-          "sent_at_utc": "2026-01-03T04:01:31.890811+00:00",
-          "expires_at_utc": "2026-01-03T04:31:31.890811+00:00",
-          "hash": "d933baa52a3a8b8956a44a1ff9c10e50e0f5f4b7"
+          "sent_at_utc": "2026-01-03T04:36:12.145770+00:00",
+          "expires_at_utc": "2026-01-03T05:06:12.145770+00:00",
+          "hash": "1d7fa240229254db413fa5eed0b28547a99df3e5"
         }
       }
     }
@@ -362,7 +362,7 @@
   "rolling_state": {
     "candidate": "ranging",
     "dir": null,
-    "streak": 62,
-    "last_ts": "2026-01-03T04:30:50.428860+00:00"
+    "streak": 63,
+    "last_ts": "2026-01-03T04:35:48.759586+00:00"
   }
 }
