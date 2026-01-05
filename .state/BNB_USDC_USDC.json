@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at_utc": "2026-01-05T23:21:16.311652+00:00",
+  "updated_at_utc": "2026-01-05T23:26:13.405496+00:00",
   "signals": {
     "BNB/USDC:USDC|11c09e748d80": {
       "signal_id": "11c09e748d80",
@@ -1072,7 +1072,7 @@
       "signal_id": "4b155a31eb8d",
       "symbol": "BNB/USDC:USDC",
       "created_at_utc": "2026-01-05T23:16:13.322953+00:00",
-      "last_seen_utc": "2026-01-05T23:21:15.778218+00:00",
+      "last_seen_utc": "2026-01-05T23:26:12.693372+00:00",
       "actions_sent": {
         "EXECUTE_NOW": {
           "sent_at_utc": "2026-01-05T23:16:13.322953+00:00",
@@ -1085,7 +1085,7 @@
   "rolling_state": {
     "candidate": "ranging",
     "dir": null,
-    "streak": 5,
-    "last_ts": "2026-01-05T23:21:04.735984+00:00"
+    "streak": 6,
+    "last_ts": "2026-01-05T23:26:01.554745+00:00"
   }
 }
