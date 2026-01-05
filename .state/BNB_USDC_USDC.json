@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at_utc": "2026-01-05T04:41:14.990292+00:00",
+  "updated_at_utc": "2026-01-05T04:46:15.525820+00:00",
   "signals": {
     "BNB/USDC:USDC|11c09e748d80": {
       "signal_id": "11c09e748d80",
@@ -1028,12 +1028,25 @@
           "hash": "4473819c475a72cb18169925b1da18026a106fdf"
         }
       }
+    },
+    "BNB/USDC:USDC|a4273caa93c3": {
+      "signal_id": "a4273caa93c3",
+      "symbol": "BNB/USDC:USDC",
+      "created_at_utc": "2026-01-05T04:46:14.742985+00:00",
+      "last_seen_utc": "2026-01-05T04:46:14.742985+00:00",
+      "actions_sent": {
+        "EXECUTE_NOW": {
+          "sent_at_utc": "2026-01-05T04:46:14.742985+00:00",
+          "expires_at_utc": "2026-01-05T05:16:14.742985+00:00",
+          "hash": "15600af940ee84dca0c870b666f2cfaf0a5f2d4a"
+        }
+      }
     }
   },
   "rolling_state": {
     "candidate": "trending",
     "dir": "down",
-    "streak": 3,
-    "last_ts": "2026-01-05T04:41:03.040928+00:00"
+    "streak": 4,
+    "last_ts": "2026-01-05T04:46:02.697432+00:00"
   }
 }
