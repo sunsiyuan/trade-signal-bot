@@ -1,40 +1,5 @@
 {
-  "active_plans": {
-    "SOL/USDC:USDC": {
-      "signal_id": "e56aa087aeda",
-      "symbol": "SOL/USDC:USDC",
-      "execution_mode": "PLACE_LIMIT_4H",
-      "direction": "short",
-      "setup_type": "mr_short",
-      "entry_price": 140.4954476830517,
-      "invalidation_price": 142.42644768305172,
-      "tp1": 138.28859054019458,
-      "tp2": 138.37134768305168,
-      "tp3": null,
-      "sl": 142.42644768305172,
-      "regime": "high_vol_ranging",
-      "valid_until_utc": "2026-01-06T18:56:00.868278+00:00",
-      "created_utc": "2026-01-06T16:56:17.315032+00:00",
-      "status": "ACTIVE"
-    },
-    "ETH/USDC:USDC": {
-      "signal_id": "1fdcc4f4f6be",
-      "symbol": "ETH/USDC:USDC",
-      "execution_mode": "PLACE_LIMIT_4H",
-      "direction": "short",
-      "setup_type": "mr_short",
-      "entry_price": 3258.4790712258527,
-      "invalidation_price": 3288.8090712258527,
-      "tp1": 3223.8162140829954,
-      "tp2": 3225.116071225853,
-      "tp3": null,
-      "sl": 3288.8090712258527,
-      "regime": "high_vol_ranging",
-      "valid_until_utc": "2026-01-06T18:55:55.272780+00:00",
-      "created_utc": "2026-01-06T16:56:17.315032+00:00",
-      "status": "ACTIVE"
-    }
-  },
+  "active_plans": {},
   "sent_events": {
     "bf8cc3af4142": [
       "EXECUTE_NOW"
@@ -1232,10 +1197,12 @@
     ],
     "1fdcc4f4f6be": [
       "EXECUTE_NOW",
-      "CREATED"
+      "CREATED",
+      "EXPIRED"
     ],
     "e56aa087aeda": [
-      "CREATED"
+      "CREATED",
+      "EXPIRED"
     ],
     "a24aaf8312b8": [
       "CREATED",
