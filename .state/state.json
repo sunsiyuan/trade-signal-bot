@@ -1,5 +1,40 @@
 {
-  "active_plans": {},
+  "active_plans": {
+    "SOL/USDC:USDC": {
+      "signal_id": "e56aa087aeda",
+      "symbol": "SOL/USDC:USDC",
+      "execution_mode": "PLACE_LIMIT_4H",
+      "direction": "short",
+      "setup_type": "mr_short",
+      "entry_price": 140.4954476830517,
+      "invalidation_price": 142.42644768305172,
+      "tp1": 138.28859054019458,
+      "tp2": 138.37134768305168,
+      "tp3": null,
+      "sl": 142.42644768305172,
+      "regime": "high_vol_ranging",
+      "valid_until_utc": "2026-01-06T18:30:59.092353+00:00",
+      "created_utc": "2026-01-06T16:31:15.707615+00:00",
+      "status": "ACTIVE"
+    },
+    "BNB/USDC:USDC": {
+      "signal_id": "a24aaf8312b8",
+      "symbol": "BNB/USDC:USDC",
+      "execution_mode": "PLACE_LIMIT_4H",
+      "direction": "short",
+      "setup_type": "mr_short",
+      "entry_price": 916.7747963639105,
+      "invalidation_price": 923.0897963639104,
+      "tp1": 909.5576535067676,
+      "tp2": 909.8282963639106,
+      "tp3": null,
+      "sl": 923.0897963639104,
+      "regime": "high_vol_ranging",
+      "valid_until_utc": "2026-01-06T18:31:04.539950+00:00",
+      "created_utc": "2026-01-06T16:31:15.707615+00:00",
+      "status": "ACTIVE"
+    }
+  },
   "sent_events": {
     "bf8cc3af4142": [
       "EXECUTE_NOW"
@@ -1194,6 +1229,15 @@
     ],
     "07328f737aba": [
       "EXECUTE_NOW"
+    ],
+    "1fdcc4f4f6be": [
+      "EXECUTE_NOW"
+    ],
+    "e56aa087aeda": [
+      "CREATED"
+    ],
+    "a24aaf8312b8": [
+      "CREATED"
     ]
   }
 }
