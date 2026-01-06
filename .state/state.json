@@ -13,8 +13,8 @@
       "tp3": null,
       "sl": 142.42644768305172,
       "regime": "high_vol_ranging",
-      "valid_until_utc": "2026-01-06T18:30:59.092353+00:00",
-      "created_utc": "2026-01-06T16:31:15.707615+00:00",
+      "valid_until_utc": "2026-01-06T18:35:59.462539+00:00",
+      "created_utc": "2026-01-06T16:36:16.366649+00:00",
       "status": "ACTIVE"
     },
     "BNB/USDC:USDC": {
@@ -30,8 +30,8 @@
       "tp3": null,
       "sl": 923.0897963639104,
       "regime": "high_vol_ranging",
-      "valid_until_utc": "2026-01-06T18:31:04.539950+00:00",
-      "created_utc": "2026-01-06T16:31:15.707615+00:00",
+      "valid_until_utc": "2026-01-06T18:36:05.151362+00:00",
+      "created_utc": "2026-01-06T16:36:16.366649+00:00",
       "status": "ACTIVE"
     }
   },
