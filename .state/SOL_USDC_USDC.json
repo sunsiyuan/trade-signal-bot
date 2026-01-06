@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at_utc": "2026-01-06T16:36:16.816525+00:00",
+  "updated_at_utc": "2026-01-06T16:41:14.935090+00:00",
   "signals": {
     "SOL/USDC:USDC|6bcb95ff3091": {
       "signal_id": "6bcb95ff3091",
@@ -996,7 +996,7 @@
       "signal_id": "e56aa087aeda",
       "symbol": "SOL/USDC:USDC",
       "created_at_utc": "2026-01-06T16:31:15.707615+00:00",
-      "last_seen_utc": "2026-01-06T16:36:16.366649+00:00",
+      "last_seen_utc": "2026-01-06T16:41:14.418945+00:00",
       "actions_sent": {
         "LIMIT_4H": {
           "sent_at_utc": "2026-01-06T16:31:15.707615+00:00",
@@ -1009,7 +1009,7 @@
   "rolling_state": {
     "candidate": "ranging",
     "dir": null,
-    "streak": 4,
-    "last_ts": "2026-01-06T16:35:59.461589+00:00"
+    "streak": 5,
+    "last_ts": "2026-01-06T16:40:57.333486+00:00"
   }
 }
