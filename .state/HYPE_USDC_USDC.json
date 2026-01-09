@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at_utc": "2026-01-09T11:21:16.032005+00:00",
+  "updated_at_utc": "2026-01-09T11:26:17.349877+00:00",
   "signals": {
     "HYPE/USDC:USDC|e8db4ab6fde8": {
       "signal_id": "e8db4ab6fde8",
@@ -110,7 +110,7 @@
       "signal_id": "20314bd143ec",
       "symbol": "HYPE/USDC:USDC",
       "created_at_utc": "2026-01-09T11:16:15.953220+00:00",
-      "last_seen_utc": "2026-01-09T11:21:15.330996+00:00",
+      "last_seen_utc": "2026-01-09T11:26:16.671014+00:00",
       "actions_sent": {
         "EXECUTE_NOW": {
           "sent_at_utc": "2026-01-09T11:16:15.953220+00:00",
@@ -123,7 +123,7 @@
   "rolling_state": {
     "candidate": "trending",
     "dir": "down",
-    "streak": 32,
-    "last_ts": "2026-01-09T11:20:42.542382+00:00"
+    "streak": 33,
+    "last_ts": "2026-01-09T11:25:44.028886+00:00"
   }
 }
