@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at_utc": "2026-01-10T21:21:16.773413+00:00",
+  "updated_at_utc": "2026-01-10T21:26:15.120464+00:00",
   "signals": {
     "SOL/USDC:USDC|6bcb95ff3091": {
       "signal_id": "6bcb95ff3091",
@@ -1035,7 +1035,7 @@
   "rolling_state": {
     "candidate": "ranging",
     "dir": null,
-    "streak": 70,
-    "last_ts": "2026-01-10T21:20:59.313771+00:00"
+    "streak": 71,
+    "last_ts": "2026-01-10T21:25:57.560221+00:00"
   }
 }
