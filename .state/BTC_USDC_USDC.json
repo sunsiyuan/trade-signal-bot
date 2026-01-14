@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at_utc": "2026-01-14T01:41:18.785159+00:00",
+  "updated_at_utc": "2026-01-14T01:46:34.981518+00:00",
   "signals": {
     "BTC/USDC:USDC|abdd3cdd9ece": {
       "signal_id": "abdd3cdd9ece",
@@ -1755,12 +1755,25 @@
           "hash": "6ba60867c62f781eb4073ae35b64e6f396075516"
         }
       }
+    },
+    "BTC/USDC:USDC|196a4ea0edd3": {
+      "signal_id": "196a4ea0edd3",
+      "symbol": "BTC/USDC:USDC",
+      "created_at_utc": "2026-01-14T01:46:34.310307+00:00",
+      "last_seen_utc": "2026-01-14T01:46:34.310307+00:00",
+      "actions_sent": {
+        "EXECUTE_NOW": {
+          "sent_at_utc": "2026-01-14T01:46:34.310307+00:00",
+          "expires_at_utc": "2026-01-14T02:16:34.310307+00:00",
+          "hash": "ce6ba2cb2800a03c38492d7cdde1f2e2f019a99b"
+        }
+      }
     }
   },
   "rolling_state": {
     "candidate": "ranging",
     "dir": null,
-    "streak": 9,
-    "last_ts": "2026-01-14T01:40:49.959532+00:00"
+    "streak": 10,
+    "last_ts": "2026-01-14T01:46:06.349895+00:00"
   }
 }
