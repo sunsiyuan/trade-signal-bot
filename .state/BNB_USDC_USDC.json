@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at_utc": "2026-01-23T10:41:21.615475+00:00",
+  "updated_at_utc": "2026-01-23T10:46:24.461967+00:00",
   "signals": {
     "BNB/USDC:USDC|11c09e748d80": {
       "signal_id": "11c09e748d80",
@@ -1213,9 +1213,9 @@
     }
   },
   "rolling_state": {
-    "candidate": "trending",
-    "dir": "down",
+    "candidate": "ranging",
+    "dir": null,
     "streak": 1,
-    "last_ts": "2026-01-23T10:41:09.910614+00:00"
+    "last_ts": "2026-01-23T10:46:12.093906+00:00"
   }
 }
