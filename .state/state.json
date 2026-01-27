@@ -13,8 +13,8 @@
       "tp3": null,
       "sl": 157.79391094188412,
       "regime": "high_vol_ranging",
-      "valid_until_utc": "2026-01-27T19:41:18.880987+00:00",
-      "created_utc": "2026-01-27T17:41:24.520531+00:00",
+      "valid_until_utc": "2026-01-27T19:46:22.779457+00:00",
+      "created_utc": "2026-01-27T17:46:28.404160+00:00",
       "status": "ACTIVE"
     }
   },
@@ -2571,6 +2571,9 @@
       "CREATED"
     ],
     "b1a3eb2e486f": [
+      "EXECUTE_NOW"
+    ],
+    "62fd468b306a": [
       "EXECUTE_NOW"
     ]
   }
