@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at_utc": "2026-01-28T14:41:27.565458+00:00",
+  "updated_at_utc": "2026-01-28T14:46:25.510138+00:00",
   "signals": {
     "HYPE/USDC:USDC|e8db4ab6fde8": {
       "signal_id": "e8db4ab6fde8",
@@ -2484,12 +2484,25 @@
           "hash": "d039bb521dfceeb1a161c830641acb47d379bd39"
         }
       }
+    },
+    "HYPE/USDC:USDC|564a68f693dc": {
+      "signal_id": "564a68f693dc",
+      "symbol": "HYPE/USDC:USDC",
+      "created_at_utc": "2026-01-28T14:46:24.517083+00:00",
+      "last_seen_utc": "2026-01-28T14:46:24.517083+00:00",
+      "actions_sent": {
+        "EXECUTE_NOW": {
+          "sent_at_utc": "2026-01-28T14:46:24.517083+00:00",
+          "expires_at_utc": "2026-01-28T15:16:24.517083+00:00",
+          "hash": "169b89fcc70f4cca38b5cacf7ed41a6cbea2c84b"
+        }
+      }
     }
   },
   "rolling_state": {
     "candidate": "trending",
     "dir": "down",
-    "streak": 1,
-    "last_ts": "2026-01-28T14:40:52.979969+00:00"
+    "streak": 2,
+    "last_ts": "2026-01-28T14:45:51.745466+00:00"
   }
 }
