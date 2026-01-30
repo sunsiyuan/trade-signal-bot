@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at_utc": "2026-01-30T17:46:27.144657+00:00",
+  "updated_at_utc": "2026-01-30T17:51:26.420134+00:00",
   "signals": {
     "ETH/USDC:USDC|543ba247b632": {
       "signal_id": "543ba247b632",
@@ -1316,7 +1316,7 @@
   "rolling_state": {
     "candidate": "trending",
     "dir": "down",
-    "streak": 3,
-    "last_ts": "2026-01-30T17:46:04.574752+00:00"
+    "streak": 4,
+    "last_ts": "2026-01-30T17:51:02.279167+00:00"
   }
 }
