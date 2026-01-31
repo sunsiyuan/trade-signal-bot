@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at_utc": "2026-01-31T21:31:29.615544+00:00",
+  "updated_at_utc": "2026-01-31T21:36:25.413846+00:00",
   "signals": {
     "ZEC/USDC:USDC|2a5ab974ae41": {
       "signal_id": "2a5ab974ae41",
@@ -1776,7 +1776,7 @@
       "signal_id": "a8ab17a94d85",
       "symbol": "ZEC/USDC:USDC",
       "created_at_utc": "2026-01-31T21:31:28.769004+00:00",
-      "last_seen_utc": "2026-01-31T21:31:28.769004+00:00",
+      "last_seen_utc": "2026-01-31T21:36:24.975649+00:00",
       "actions_sent": {
         "EXECUTE_NOW": {
           "sent_at_utc": "2026-01-31T21:31:28.769004+00:00",
@@ -1789,7 +1789,7 @@
   "rolling_state": {
     "candidate": "ranging",
     "dir": null,
-    "streak": 4,
-    "last_ts": "2026-01-31T21:31:28.764852+00:00"
+    "streak": 5,
+    "last_ts": "2026-01-31T21:36:24.971743+00:00"
   }
 }
