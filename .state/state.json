@@ -1,5 +1,40 @@
 {
-  "active_plans": {},
+  "active_plans": {
+    "BTC/USDC:USDC": {
+      "signal_id": "14514017add0",
+      "symbol": "BTC/USDC:USDC",
+      "execution_mode": "PLACE_LIMIT_4H",
+      "direction": "long",
+      "setup_type": "mr_long",
+      "entry_price": 75624.43508828078,
+      "invalidation_price": 73959.23508828078,
+      "tp1": 77527.52080256649,
+      "tp2": 77456.15508828078,
+      "tp3": null,
+      "sl": 73959.23508828078,
+      "regime": "high_vol_ranging",
+      "valid_until_utc": "2026-02-02T08:46:04.818251+00:00",
+      "created_utc": "2026-02-02T06:46:33.811986+00:00",
+      "status": "ACTIVE"
+    },
+    "SOL/USDC:USDC": {
+      "signal_id": "58aefc185105",
+      "symbol": "SOL/USDC:USDC",
+      "execution_mode": "PLACE_LIMIT_4H",
+      "direction": "long",
+      "setup_type": "mr_long",
+      "entry_price": 98.39220354991863,
+      "invalidation_price": 94.75340354991864,
+      "tp1": 102.5508321213472,
+      "tp2": 102.39488354991862,
+      "tp3": null,
+      "sl": 94.75340354991864,
+      "regime": "high_vol_ranging",
+      "valid_until_utc": "2026-02-02T08:46:16.120600+00:00",
+      "created_utc": "2026-02-02T06:46:33.811986+00:00",
+      "status": "ACTIVE"
+    }
+  },
   "sent_events": {
     "bf8cc3af4142": [
       "EXECUTE_NOW"
@@ -4639,9 +4674,14 @@
       "EXECUTE_NOW"
     ],
     "58aefc185105": [
-      "EXECUTE_NOW"
+      "EXECUTE_NOW",
+      "CREATED"
     ],
     "14514017add0": [
+      "EXECUTE_NOW",
+      "CREATED"
+    ],
+    "03fef1766057": [
       "EXECUTE_NOW"
     ]
   }
