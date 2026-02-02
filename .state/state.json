@@ -13,8 +13,8 @@
       "tp3": null,
       "sl": 73959.23508828078,
       "regime": "high_vol_ranging",
-      "valid_until_utc": "2026-02-02T08:51:01.908913+00:00",
-      "created_utc": "2026-02-02T06:51:30.455854+00:00",
+      "valid_until_utc": "2026-02-02T08:55:58.331848+00:00",
+      "created_utc": "2026-02-02T06:56:27.207333+00:00",
       "status": "ACTIVE"
     },
     "SOL/USDC:USDC": {
@@ -30,8 +30,8 @@
       "tp3": null,
       "sl": 94.75340354991864,
       "regime": "high_vol_ranging",
-      "valid_until_utc": "2026-02-02T08:51:13.364416+00:00",
-      "created_utc": "2026-02-02T06:51:30.455854+00:00",
+      "valid_until_utc": "2026-02-02T08:56:09.969745+00:00",
+      "created_utc": "2026-02-02T06:56:27.207333+00:00",
       "status": "ACTIVE"
     }
   },
