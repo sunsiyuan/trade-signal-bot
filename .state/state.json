@@ -13,8 +13,8 @@
       "tp3": null,
       "sl": 88.25314,
       "regime": "high_vol_ranging",
-      "valid_until_utc": "2026-02-05T15:36:20.490593+00:00",
-      "created_utc": "2026-02-05T14:36:37.909367+00:00",
+      "valid_until_utc": "2026-02-05T15:46:20.956390+00:00",
+      "created_utc": "2026-02-05T14:46:38.890127+00:00",
       "status": "ACTIVE"
     }
   },
@@ -5060,6 +5060,15 @@
       "EXECUTE_NOW"
     ],
     "c5634b9eeb2f": [
+      "EXECUTE_NOW"
+    ],
+    "661e2765c711": [
+      "EXECUTE_NOW"
+    ],
+    "8bef5e1840fa": [
+      "EXECUTE_NOW"
+    ],
+    "904c3d0d63a4": [
       "EXECUTE_NOW"
     ]
   }
