@@ -1,23 +1,5 @@
 {
-  "active_plans": {
-    "BNB/USDC:USDC": {
-      "signal_id": "094cde652015",
-      "symbol": "BNB/USDC:USDC",
-      "execution_mode": "PLACE_LIMIT_4H",
-      "direction": "short",
-      "setup_type": "mr_short",
-      "entry_price": 625.9113910200381,
-      "invalidation_price": 632.500391020038,
-      "tp1": 618.3811053057524,
-      "tp2": 618.6634910200381,
-      "tp3": null,
-      "sl": 632.500391020038,
-      "regime": "high_vol_ranging",
-      "valid_until_utc": "2026-02-16T15:56:34.808766+00:00",
-      "created_utc": "2026-02-16T13:56:45.954265+00:00",
-      "status": "ACTIVE"
-    }
-  },
+  "active_plans": {},
   "sent_events": {
     "bf8cc3af4142": [
       "EXECUTE_NOW"
@@ -5596,7 +5578,8 @@
       "EXECUTE_NOW"
     ],
     "094cde652015": [
-      "CREATED"
+      "CREATED",
+      "REGIME_CHANGED"
     ]
   }
 }
