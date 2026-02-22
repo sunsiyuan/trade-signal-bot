@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at_utc": "2026-02-22T13:56:53.003867+00:00",
+  "updated_at_utc": "2026-02-22T14:02:32.574279+00:00",
   "signals": {
     "ZEC/USDC:USDC|2a5ab974ae41": {
       "signal_id": "2a5ab974ae41",
@@ -2977,7 +2977,7 @@
   "rolling_state": {
     "candidate": "trending",
     "dir": "down",
-    "streak": 30,
-    "last_ts": "2026-02-22T13:56:52.351457+00:00"
+    "streak": 31,
+    "last_ts": "2026-02-22T14:02:32.083703+00:00"
   }
 }
