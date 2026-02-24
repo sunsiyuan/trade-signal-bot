@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at_utc": "2026-02-24T13:26:57.991948+00:00",
+  "updated_at_utc": "2026-02-24T13:31:58.108278+00:00",
   "signals": {
     "SOL/USDC:USDC|6bcb95ff3091": {
       "signal_id": "6bcb95ff3091",
@@ -3567,12 +3567,25 @@
           "hash": "09a1a2ffbdcdc9a576819978a6d35ff036e70987"
         }
       }
+    },
+    "SOL/USDC:USDC|9f8e75619592": {
+      "signal_id": "9f8e75619592",
+      "symbol": "SOL/USDC:USDC",
+      "created_at_utc": "2026-02-24T13:31:57.167515+00:00",
+      "last_seen_utc": "2026-02-24T13:31:57.167515+00:00",
+      "actions_sent": {
+        "EXECUTE_NOW": {
+          "sent_at_utc": "2026-02-24T13:31:57.167515+00:00",
+          "expires_at_utc": "2026-02-24T14:01:57.167515+00:00",
+          "hash": "95010f526b8d49aa96b6266107894017e85a4490"
+        }
+      }
     }
   },
   "rolling_state": {
     "candidate": "ranging",
     "dir": null,
-    "streak": 27,
-    "last_ts": "2026-02-24T13:26:40.789241+00:00"
+    "streak": 28,
+    "last_ts": "2026-02-24T13:31:40.009385+00:00"
   }
 }
