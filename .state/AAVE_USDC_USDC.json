@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at_utc": "2026-02-28T09:22:02.906253+00:00",
+  "updated_at_utc": "2026-02-28T09:27:05.101913+00:00",
   "signals": {
     "AAVE/USDC:USDC|f0d1b3cc2d69": {
       "signal_id": "f0d1b3cc2d69",
@@ -4444,7 +4444,7 @@
       "signal_id": "519840aa8ffa",
       "symbol": "AAVE/USDC:USDC",
       "created_at_utc": "2026-02-28T09:17:02.195001+00:00",
-      "last_seen_utc": "2026-02-28T09:22:02.102731+00:00",
+      "last_seen_utc": "2026-02-28T09:27:04.378864+00:00",
       "actions_sent": {
         "EXECUTE_NOW": {
           "sent_at_utc": "2026-02-28T09:17:02.195001+00:00",
@@ -4457,7 +4457,7 @@
   "rolling_state": {
     "candidate": "trending",
     "dir": "down",
-    "streak": 71,
-    "last_ts": "2026-02-28T09:21:55.748963+00:00"
+    "streak": 72,
+    "last_ts": "2026-02-28T09:26:58.231402+00:00"
   }
 }
