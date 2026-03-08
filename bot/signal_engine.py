@@ -181,11 +181,6 @@ class SignalEngine:
             return build_execution_intent_tf(snap, regime_signal, signal)
 
         if regime_signal.regime in ("high_vol_ranging", "low_vol_ranging"):
-            if setup_type.startswith("lh"):
-                from .strategy_liquidity_hunt import build_execution_intent_lh
-
-                return build_execution_intent_lh(snap, signal)
-
             if setup_type.startswith("mr"):
                 from .strategy_mean_reversion import build_execution_intent_mr
 
@@ -235,19 +230,12 @@ class SignalEngine:
         return signal
 
     # =========================
-    # Range router：LH / MR
+    # Range router：MR only（LH 策略已关闭，尚未成熟）
     # =========================
     def _decide_range(self, snap: MarketSnapshot) -> TradeSignal:
-        from .strategy_liquidity_hunt import build_liquidity_hunt_signal
         from .strategy_mean_reversion import build_mean_reversion_signal
 
         regime = getattr(snap, "regime", None)
-
-        # --- 高波动震荡：优先 LH ---
-        if regime == "high_vol_ranging":
-            lh = build_liquidity_hunt_signal(snap, regime, self.settings)
-            if lh:
-                return lh
 
         # --- 所有震荡：MR ---
         if regime in ("high_vol_ranging", "low_vol_ranging"):

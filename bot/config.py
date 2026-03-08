@@ -54,9 +54,7 @@ class Settings:
             "BTC/USDC:USDC",
             "ETH/USDC:USDC",
             "SOL/USDC:USDC",
-            "BNB/USDC:USDC",
             "AAVE/USDC:USDC",
-            "ZEC/USDC:USDC",
         ]
     )
 
@@ -390,8 +388,6 @@ class Settings:
             "HYPE": 0.01,
             "SOL": 0.1,
             "ETH": 10,
-            "BNB": 1,
             "AAVE": 0.1,
-            "ZEC": 1,
         }
     )
