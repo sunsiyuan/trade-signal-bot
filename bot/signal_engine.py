@@ -23,10 +23,6 @@ from .conditional_plan import (
     resolve_atr_4h,
 )
 from .regime_detector import detect_regime, RegimeSignal
-from .strategy_trend_following import (
-    build_execution_intent_tf,
-    build_trend_following_signal,
-)
 
 
 def _get_price_step(symbol: str, settings: Optional[Settings]) -> Decimal:
@@ -177,14 +173,10 @@ class SignalEngine:
             return signal.execution_intent  # type: ignore[return-value]
 
         setup_type = getattr(signal, "setup_type", "") or ""
-        if regime_signal.regime == "trending":
-            return build_execution_intent_tf(snap, regime_signal, signal)
+        if setup_type.startswith("mr"):
+            from .strategy_mean_reversion import build_execution_intent_mr
 
-        if regime_signal.regime in ("high_vol_ranging", "low_vol_ranging"):
-            if setup_type.startswith("mr"):
-                from .strategy_mean_reversion import build_execution_intent_mr
-
-                return build_execution_intent_mr(snap, signal)
+            return build_execution_intent_mr(snap, signal)
 
         return ExecutionIntent(
             symbol=snap.symbol,
@@ -207,25 +199,11 @@ class SignalEngine:
         snap.regime = regime
         snap.regime_reason = regime_signal.reason
 
-        if regime == "trending":
-            # 趋势行情 → 趋势跟随策略
-            signal = build_trend_following_signal(
-                snap,
-                regime_signal,
-                min_confidence=self.min_confidence,
-                settings=self.settings,
-            )
-        elif regime in ("high_vol_ranging", "low_vol_ranging"):
-            # 震荡行情 → range router
+        # TF 策略尚未成熟，所有 regime 统一走 MR 路由
+        if regime in ("trending", "high_vol_ranging", "low_vol_ranging"):
             signal = self._decide_range(snap)
         else:
-            # 兜底：未知 regime 也按趋势处理（防止系统无输出）
-            signal = build_trend_following_signal(
-                snap,
-                regime_signal,
-                min_confidence=self.min_confidence,
-                settings=self.settings,
-            )
+            signal = self._decide_range(snap)
 
         return signal
 
