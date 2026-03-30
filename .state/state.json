@@ -1,23 +1,5 @@
 {
-  "active_plans": {
-    "AAVE/USDC:USDC": {
-      "signal_id": "7bbb59f0f41b",
-      "symbol": "AAVE/USDC:USDC",
-      "execution_mode": "PLACE_LIMIT_4H",
-      "direction": "short",
-      "setup_type": "mr_short",
-      "entry_price": 98.95326642137843,
-      "invalidation_price": 100.58606642137843,
-      "tp1": 97.08720927852129,
-      "tp2": 97.15718642137843,
-      "tp3": null,
-      "sl": 100.58606642137843,
-      "regime": "high_vol_ranging",
-      "valid_until_utc": "2026-03-30T11:57:26.646765+00:00",
-      "created_utc": "2026-03-30T09:57:26.649291+00:00",
-      "status": "ACTIVE"
-    }
-  },
+  "active_plans": {},
   "sent_events": {
     "bf8cc3af4142": [
       "EXECUTE_NOW"
@@ -6846,7 +6828,8 @@
       "EXECUTE_NOW"
     ],
     "7bbb59f0f41b": [
-      "CREATED"
+      "CREATED",
+      "EXPIRED"
     ]
   }
 }
