@@ -1,5 +1,23 @@
 {
-  "active_plans": {},
+  "active_plans": {
+    "HYPE/USDC:USDC": {
+      "signal_id": "e156a222eeb8",
+      "symbol": "HYPE/USDC:USDC",
+      "execution_mode": "PLACE_LIMIT_4H",
+      "direction": "long",
+      "setup_type": "mr_long",
+      "entry_price": 40.50290628681627,
+      "invalidation_price": 39.879506286816266,
+      "tp1": 41.21536342967342,
+      "tp2": 41.18864628681627,
+      "tp3": null,
+      "sl": 39.879506286816266,
+      "regime": "high_vol_ranging",
+      "valid_until_utc": "2026-04-12T16:32:16.893317+00:00",
+      "created_utc": "2026-04-12T14:32:39.092440+00:00",
+      "status": "ACTIVE"
+    }
+  },
   "sent_events": {
     "bf8cc3af4142": [
       "EXECUTE_NOW"
@@ -6890,6 +6908,9 @@
     ],
     "327594a6cac5": [
       "EXECUTE_NOW"
+    ],
+    "e156a222eeb8": [
+      "CREATED"
     ]
   }
 }
