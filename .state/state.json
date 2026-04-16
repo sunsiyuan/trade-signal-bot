@@ -1,5 +1,23 @@
 {
-  "active_plans": {},
+  "active_plans": {
+    "ETH/USDC:USDC": {
+      "signal_id": "37165a6f46e8",
+      "symbol": "ETH/USDC:USDC",
+      "execution_mode": "PLACE_LIMIT_4H",
+      "direction": "long",
+      "setup_type": "mr_long",
+      "entry_price": 2309.6948893146773,
+      "invalidation_price": 2285.2248893146775,
+      "tp1": 2337.660603600392,
+      "tp2": 2336.6118893146772,
+      "tp3": null,
+      "sl": 2285.2248893146775,
+      "regime": "high_vol_ranging",
+      "valid_until_utc": "2026-04-16T17:18:05.605443+00:00",
+      "created_utc": "2026-04-16T15:18:16.663460+00:00",
+      "status": "ACTIVE"
+    }
+  },
   "sent_events": {
     "bf8cc3af4142": [
       "EXECUTE_NOW"
@@ -6914,6 +6932,9 @@
     ],
     "4fc507b622ff": [
       "EXECUTE_NOW"
+    ],
+    "37165a6f46e8": [
+      "CREATED"
     ]
   }
 }
