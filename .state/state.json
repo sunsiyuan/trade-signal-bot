@@ -1,23 +1,5 @@
 {
-  "active_plans": {
-    "SOL/USDC:USDC": {
-      "signal_id": "0885c6008868",
-      "symbol": "SOL/USDC:USDC",
-      "execution_mode": "PLACE_LIMIT_4H",
-      "direction": "long",
-      "setup_type": "mr_long",
-      "entry_price": 85.10724690813883,
-      "invalidation_price": 84.27374690813883,
-      "tp1": 86.05981833671025,
-      "tp2": 86.02409690813883,
-      "tp3": null,
-      "sl": 84.27374690813883,
-      "regime": "high_vol_ranging",
-      "valid_until_utc": "2026-04-27T16:57:59.168457+00:00",
-      "created_utc": "2026-04-27T14:58:04.765539+00:00",
-      "status": "ACTIVE"
-    }
-  },
+  "active_plans": {},
   "sent_events": {
     "bf8cc3af4142": [
       "EXECUTE_NOW"
@@ -6993,7 +6975,8 @@
     ],
     "0885c6008868": [
       "EXECUTE_NOW",
-      "CREATED"
+      "CREATED",
+      "INVALIDATED"
     ]
   }
 }
