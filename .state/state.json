@@ -7006,6 +7006,9 @@
       "EXECUTE_NOW",
       "CREATED",
       "EXPIRED"
+    ],
+    "706518244b85": [
+      "EXECUTE_NOW"
     ]
   }
 }
