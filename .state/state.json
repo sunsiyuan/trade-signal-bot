@@ -1,23 +1,5 @@
 {
-  "active_plans": {
-    "BTC/USDC:USDC": {
-      "signal_id": "706518244b85",
-      "symbol": "BTC/USDC:USDC",
-      "execution_mode": "PLACE_LIMIT_4H",
-      "direction": "short",
-      "setup_type": "mr_short",
-      "entry_price": 79043.84107037069,
-      "invalidation_price": 79438.84107037069,
-      "tp1": 78592.41249894213,
-      "tp2": 78609.34107037069,
-      "tp3": null,
-      "sl": 79438.84107037069,
-      "regime": "high_vol_ranging",
-      "valid_until_utc": "2026-05-04T01:57:46.428488+00:00",
-      "created_utc": "2026-05-03T23:58:03.602113+00:00",
-      "status": "ACTIVE"
-    }
-  },
+  "active_plans": {},
   "sent_events": {
     "bf8cc3af4142": [
       "EXECUTE_NOW"
@@ -7027,7 +7009,8 @@
     ],
     "706518244b85": [
       "EXECUTE_NOW",
-      "CREATED"
+      "CREATED",
+      "REGIME_CHANGED"
     ]
   }
 }
