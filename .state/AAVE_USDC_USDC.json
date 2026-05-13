@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at_utc": "2026-05-13T05:43:16.259580+00:00",
+  "updated_at_utc": "2026-05-13T05:48:19.483682+00:00",
   "signals": {
     "AAVE/USDC:USDC|f0d1b3cc2d69": {
       "signal_id": "f0d1b3cc2d69",
@@ -6227,7 +6227,7 @@
   "rolling_state": {
     "candidate": "ranging",
     "dir": null,
-    "streak": 6,
-    "last_ts": "2026-05-13T05:43:15.531723+00:00"
+    "streak": 7,
+    "last_ts": "2026-05-13T05:48:18.935093+00:00"
   }
 }
