@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at_utc": "2026-05-16T11:13:23.480733+00:00",
+  "updated_at_utc": "2026-05-16T11:18:19.381592+00:00",
   "signals": {
     "HYPE/USDC:USDC|e8db4ab6fde8": {
       "signal_id": "e8db4ab6fde8",
@@ -3711,7 +3711,7 @@
   "rolling_state": {
     "candidate": "trending",
     "dir": "down",
-    "streak": 116,
-    "last_ts": "2026-05-16T11:13:00.905785+00:00"
+    "streak": 117,
+    "last_ts": "2026-05-16T11:17:55.957051+00:00"
   }
 }
